@@ -1,0 +1,509 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   Cyber Fintech Theme - Base Styles
+   ============================================ */
+
+:root {
+  --neon-cyan: #00f5ff;
+  --neon-green: #00ff88;
+  --neon-pink: #ff00aa;
+  --neon-purple: #a855f7;
+  --cyber-dark: #0d0d14;
+  --cyber-base: #12121a;
+  --grid-color: rgba(0, 245, 255, 0.03);
+}
+
+body {
+  @apply text-gray-100 antialiased;
+  background-color: #0a0a0f;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-image:
+    linear-gradient(rgba(0, 245, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 255, 0.02) 1px, transparent 1px),
+    radial-gradient(ellipse at top, rgba(0, 245, 255, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(168, 85, 247, 0.03) 0%, transparent 50%);
+  background-size: 60px 60px, 60px 60px, 100% 100%, 100% 100%;
+  background-attachment: fixed;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif;
+  @apply font-semibold tracking-tight;
+}
+
+.font-mono, code, .data-value {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ============================================
+   Cyber Card Styles
+   ============================================ */
+
+.card {
+  @apply backdrop-blur-xl rounded-xl p-6;
+  background: rgba(18, 18, 26, 0.8);
+  border: 1px solid rgba(0, 245, 255, 0.1);
+  box-shadow:
+    0 4px 30px rgba(0, 0, 0, 0.4),
+    inset 0 0 30px rgba(0, 245, 255, 0.02);
+}
+
+.card-elevated {
+  @apply backdrop-blur-xl rounded-2xl p-6 relative overflow-hidden;
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid rgba(0, 245, 255, 0.2);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.5),
+    0 0 1px rgba(0, 245, 255, 0.3),
+    inset 0 0 40px rgba(0, 245, 255, 0.02);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-elevated::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  opacity: 0.5;
+}
+
+.card-elevated:hover {
+  border-color: rgba(0, 245, 255, 0.35);
+  box-shadow:
+    0 12px 50px rgba(0, 0, 0, 0.6),
+    0 0 2px rgba(0, 245, 255, 0.5),
+    0 0 30px rgba(0, 245, 255, 0.1),
+    inset 0 0 60px rgba(0, 245, 255, 0.03);
+  transform: translateY(-2px);
+}
+
+/* Scan line effect on hover */
+.card-elevated::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 245, 255, 0.03) 50%,
+    transparent 100%
+  );
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.card-elevated:hover::after {
+  animation: scan 2s linear infinite;
+  opacity: 1;
+}
+
+/* ============================================
+   Neon Buttons
+   ============================================ */
+
+.btn-primary {
+  @apply relative px-6 py-2.5 rounded-lg font-medium overflow-hidden;
+  background: linear-gradient(135deg, rgba(0, 245, 255, 0.15) 0%, rgba(0, 128, 255, 0.15) 100%);
+  border: 1px solid rgba(0, 245, 255, 0.4);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(0, 245, 255, 0.5);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--neon-cyan) 0%, #0080ff 100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--neon-cyan);
+  box-shadow:
+    0 0 20px rgba(0, 245, 255, 0.4),
+    0 0 40px rgba(0, 245, 255, 0.2),
+    inset 0 0 20px rgba(0, 245, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.btn-primary:hover:not(:disabled)::before {
+  opacity: 0.15;
+}
+
+.btn-primary:disabled {
+  @apply opacity-40 cursor-not-allowed;
+  border-color: rgba(107, 114, 128, 0.3);
+  color: #6b7280;
+  text-shadow: none;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 rounded-lg font-medium;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #9ca3af;
+  transition: all 0.3s;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e5e7eb;
+}
+
+.btn-success {
+  @apply relative px-4 py-2 rounded-lg font-medium;
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.15) 0%, rgba(0, 200, 100, 0.15) 100%);
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: var(--neon-green);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.btn-success:hover:not(:disabled) {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+/* ============================================
+   Data Display Elements
+   ============================================ */
+
+/* Profit/Loss Values */
+.value-positive {
+  @apply font-mono font-semibold;
+  color: #00ff88;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.value-negative {
+  @apply font-mono font-semibold;
+  color: #ff3366;
+  text-shadow: 0 0 10px rgba(255, 51, 102, 0.5);
+}
+
+/* Data Metric Box */
+.metric-box {
+  @apply relative rounded-xl p-4 overflow-hidden;
+  background: linear-gradient(135deg, rgba(0, 245, 255, 0.05) 0%, rgba(168, 85, 247, 0.03) 100%);
+  border: 1px solid rgba(0, 245, 255, 0.1);
+}
+
+.metric-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--neon-cyan), var(--neon-purple));
+  opacity: 0.7;
+}
+
+/* ============================================
+   Status Badges
+   ============================================ */
+
+.badge {
+  @apply inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium uppercase tracking-wider;
+}
+
+.badge-success {
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: var(--neon-green);
+}
+
+.badge-warning {
+  background: rgba(255, 170, 0, 0.1);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  color: #ffaa00;
+}
+
+.badge-danger {
+  background: rgba(255, 51, 102, 0.1);
+  border: 1px solid rgba(255, 51, 102, 0.3);
+  color: #ff3366;
+}
+
+.badge-info {
+  background: rgba(0, 245, 255, 0.1);
+  border: 1px solid rgba(0, 245, 255, 0.3);
+  color: var(--neon-cyan);
+}
+
+/* ============================================
+   Glowing Text Effects
+   ============================================ */
+
+.text-gradient {
+  @apply bg-clip-text text-transparent font-semibold;
+  background-image: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-purple) 100%);
+}
+
+.text-glow-cyan {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(0, 245, 255, 0.5), 0 0 20px rgba(0, 245, 255, 0.3);
+}
+
+.text-glow-green {
+  color: var(--neon-green);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5), 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.text-glow-pink {
+  color: var(--neon-pink);
+  text-shadow: 0 0 10px rgba(255, 0, 170, 0.5), 0 0 20px rgba(255, 0, 170, 0.3);
+}
+
+/* ============================================
+   Progress Bars & Indicators
+   ============================================ */
+
+.progress-bar {
+  @apply relative h-2 rounded-full overflow-hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.progress-bar-fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+  box-shadow: 0 0 10px rgba(0, 245, 255, 0.5);
+}
+
+/* Risk Indicator */
+.risk-low { --indicator-color: var(--neon-green); }
+.risk-medium { --indicator-color: #ffaa00; }
+.risk-high { --indicator-color: #ff6b00; }
+.risk-extreme { --indicator-color: #ff3366; }
+
+/* ============================================
+   Custom Scrollbar - Cyber Style
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cyber-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, rgba(0, 245, 255, 0.3), rgba(168, 85, 247, 0.3));
+  border-radius: 4px;
+  border: 1px solid rgba(0, 245, 255, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, rgba(0, 245, 255, 0.5), rgba(168, 85, 247, 0.5));
+}
+
+/* ============================================
+   Loading States
+   ============================================ */
+
+.skeleton {
+  @apply rounded;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(0, 245, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Pulse dot indicator */
+.pulse-dot {
+  @apply relative w-2 h-2 rounded-full;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.pulse-dot::before {
+  content: '';
+  @apply absolute inset-0 rounded-full;
+  background: var(--neon-cyan);
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* ============================================
+   Section Headers
+   ============================================ */
+
+.section-header-icon {
+  @apply w-10 h-10 rounded-xl flex items-center justify-center relative;
+  background: linear-gradient(135deg, rgba(0, 245, 255, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+  border: 1px solid rgba(0, 245, 255, 0.3);
+  box-shadow: 0 0 20px rgba(0, 245, 255, 0.2);
+}
+
+.section-header-icon svg {
+  color: #00f5ff;
+  filter: drop-shadow(0 0 4px rgba(0, 245, 255, 0.5));
+}
+
+/* ============================================
+   Charts Background
+   ============================================ */
+
+.chart-container {
+  @apply relative rounded-xl overflow-hidden;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 245, 255, 0.02) 100%);
+  border: 1px solid rgba(0, 245, 255, 0.1);
+}
+
+/* ============================================
+   Tooltip Styles (for Recharts)
+   ============================================ */
+
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  @apply rounded-lg border-0 !important;
+  background: rgba(13, 13, 20, 0.95) !important;
+  border: 1px solid rgba(0, 245, 255, 0.3) !important;
+  box-shadow: 0 0 20px rgba(0, 245, 255, 0.2) !important;
+}
+
+/* ============================================
+   Table Styles
+   ============================================ */
+
+.cyber-table {
+  @apply w-full text-sm;
+}
+
+.cyber-table thead {
+  @apply text-xs uppercase tracking-wider;
+  color: var(--neon-cyan);
+  background: rgba(0, 245, 255, 0.05);
+}
+
+.cyber-table th {
+  @apply px-4 py-3 text-left font-mono font-medium;
+  border-bottom: 1px solid rgba(0, 245, 255, 0.2);
+}
+
+.cyber-table td {
+  @apply px-4 py-3;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cyber-table tbody tr {
+  transition: all 0.2s;
+}
+
+.cyber-table tbody tr:hover {
+  background: rgba(0, 245, 255, 0.03);
+}
+
+/* ============================================
+   Form Elements
+   ============================================ */
+
+input[type="range"] {
+  @apply w-full h-2 rounded-lg appearance-none cursor-pointer;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 rounded-full cursor-pointer;
+  background: var(--neon-cyan);
+  box-shadow: 0 0 10px var(--neon-cyan);
+  border: 2px solid rgba(0, 0, 0, 0.3);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 20px var(--neon-cyan);
+  transform: scale(1.1);
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* Smooth hover transitions */
+* {
+  @apply transition-colors duration-200;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+.border-glow {
+  animation: border-glow 3s ease-in-out infinite;
+}
+
+.glass-dark {
+  @apply backdrop-blur-xl;
+  background: rgba(13, 13, 20, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Corner accents for cards */
+.corner-accent::before,
+.corner-accent::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--neon-cyan);
+  opacity: 0.5;
+}
+
+.corner-accent::before {
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-accent::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
+}
