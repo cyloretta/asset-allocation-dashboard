@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://asset-allocation-api.onrender.com/api/:path*"
+      "destination": "https://asset-allocation-api-dxas.onrender.com/api/:path*"
     }
   ]
 }
