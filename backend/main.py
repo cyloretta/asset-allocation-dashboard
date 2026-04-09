@@ -1,6 +1,10 @@
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+import os
+import asyncio
+import hashlib
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
@@ -39,6 +43,133 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 scheduler_manager = SchedulerManager()
+
+# 访问密码配置
+ACCESS_PASSWORD = "1124"
+AUTH_COOKIE_NAME = "dashboard_auth"
+AUTH_TOKEN = hashlib.sha256(f"dashboard_{ACCESS_PASSWORD}_secret".encode()).hexdigest()[:32]
+
+# 登录页面 HTML（使用 $ERROR_CLASS$ 和 $ERROR_MSG$ 作为占位符）
+LOGIN_PAGE_HTML = """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>访问验证 - 资产配置看板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .login-box {
+            background: rgba(20, 20, 35, 0.9);
+            border: 1px solid rgba(0, 245, 255, 0.3);
+            border-radius: 16px;
+            padding: 40px;
+            width: 90%;
+            max-width: 360px;
+            box-shadow: 0 0 40px rgba(0, 245, 255, 0.1);
+        }
+        h1 {
+            color: #00f5ff;
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        input[type="password"] {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 245, 255, 0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 8px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        input[type="password"]:focus {
+            border-color: #00f5ff;
+            box-shadow: 0 0 20px rgba(0, 245, 255, 0.2);
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 20px;
+            background: linear-gradient(135deg, #00f5ff 0%, #00d4aa 100%);
+            border: none;
+            border-radius: 8px;
+            color: #000;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 245, 255, 0.4);
+        }
+        .error {
+            color: #ff6b6b;
+            text-align: center;
+            margin-top: 16px;
+            font-size: 14px;
+            display: none;
+        }
+        .error.show { display: block; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>🔐 访问验证</h1>
+        <p class="subtitle">请输入访问密码</p>
+        <form method="POST" action="/auth/login">
+            <input type="password" name="password" placeholder="••••" maxlength="10" autofocus required>
+            <button type="submit">验 证</button>
+        </form>
+        <p class="error $ERROR_CLASS$">$ERROR_MSG$</p>
+    </div>
+</body>
+</html>
+"""
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """访问密码验证中间件"""
+
+    # 不需要验证的路径
+    WHITELIST = ["/auth/login", "/api/health", "/favicon.ico"]
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # 白名单路径跳过验证
+        if any(path.startswith(p) for p in self.WHITELIST):
+            return await call_next(request)
+
+        # 检查认证 cookie
+        auth_cookie = request.cookies.get(AUTH_COOKIE_NAME)
+        if auth_cookie == AUTH_TOKEN:
+            return await call_next(request)
+
+        # 未认证，返回登录页面
+        return HTMLResponse(
+            content=LOGIN_PAGE_HTML.replace("$ERROR_CLASS$", "").replace("$ERROR_MSG$", ""),
+            status_code=401
+        )
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -123,6 +254,8 @@ async def lifespan(app: FastAPI):
     await init_db()
     await validate_fred_api_key()
     scheduler_manager.start()
+    # 后台预热缓存（不阻塞启动）
+    asyncio.create_task(warmup_cache())
     logger.info("Application started")
     yield
     # Shutdown
@@ -156,6 +289,9 @@ app.include_router(user_config_router)
 # 速率限制中间件：每分钟60请求，突发限制10请求/秒
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst_limit=10)
 
+# 访问密码验证中间件
+app.add_middleware(AuthMiddleware)
+
 # Initialize services
 market_fetcher = MarketDataFetcher()
 macro_fetcher = MacroDataFetcher()
@@ -165,6 +301,17 @@ technical_analyzer = TechnicalAnalyzer()
 optimizer = PortfolioOptimizer()
 risk_metrics = RiskMetrics()
 backtester = Backtester()
+
+
+async def warmup_cache():
+    """预热缓存 - 后台加载数据"""
+    try:
+        logger.info("Warming up cache...")
+        await macro_fetcher.fetch_all()
+        await market_fetcher.get_current_prices()
+        logger.info("Cache warmup completed")
+    except Exception as e:
+        logger.warning(f"Cache warmup failed: {e}")
 
 
 # Request/Response Models
@@ -184,8 +331,37 @@ class BacktestRequest(BaseModel):
 
 # API Endpoints
 
-@app.get("/")
-async def root():
+# 登录验证路由
+@app.post("/auth/login")
+async def login(password: str = Form(...)):
+    """处理登录请求"""
+    if password == ACCESS_PASSWORD:
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(
+            key=AUTH_COOKIE_NAME,
+            value=AUTH_TOKEN,
+            max_age=30 * 24 * 3600,  # 30 天有效
+            httponly=True,
+            samesite="lax"
+        )
+        return response
+    else:
+        return HTMLResponse(
+            content=LOGIN_PAGE_HTML.replace("$ERROR_CLASS$", "show").replace("$ERROR_MSG$", "密码错误，请重试"),
+            status_code=401
+        )
+
+
+@app.get("/auth/logout")
+async def logout():
+    """登出"""
+    response = RedirectResponse(url="/auth/login", status_code=302)
+    response.delete_cookie(AUTH_COOKIE_NAME)
+    return response
+
+
+@app.get("/api/")
+async def api_root():
     return {"status": "ok", "message": "Asset Allocation Dashboard API"}
 
 
@@ -495,6 +671,10 @@ async def optimize_portfolio(request: AllocationRequest):
             macro_risk_score=macro_risk_score,
             ai_risk_score=ai_risk_score
         )
+
+        # 检查优化是否成功
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
 
         # 方案C: 获取当前配置，计算取整目标和调仓建议
         async with async_session() as session:
@@ -949,6 +1129,27 @@ async def get_system_config():
     }
 
 
+@app.get("/api/system/data-sources")
+async def get_data_sources_status():
+    """获取数据源健康状态"""
+    health = market_fetcher.get_data_sources_health()
+    return {
+        "sources": health,
+        "summary": {
+            "total": len(health),
+            "healthy": sum(1 for v in health.values() if v),
+            "unhealthy": sum(1 for v in health.values() if not v)
+        }
+    }
+
+
+@app.post("/api/system/clear-cache")
+async def clear_data_cache():
+    """清空数据缓存"""
+    market_fetcher.clear_cache()
+    return {"status": "success", "message": "缓存已清空"}
+
+
 def check_data_freshness(data_date: datetime, max_age_hours: int = 24) -> dict:
     """检查数据新鲜度"""
     from datetime import timezone
@@ -1048,6 +1249,31 @@ async def get_dashboard_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 静态文件服务 (生产模式)
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
+if os.path.exists(FRONTEND_DIR):
+    # 挂载静态资源
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+
+    # SPA fallback - 所有非 API 路由返回 index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # API 路由不处理
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # 静态文件
+        file_path = os.path.join(FRONTEND_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+
+        # 返回 index.html (SPA)
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+    logger.info(f"Serving frontend from {FRONTEND_DIR}")
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

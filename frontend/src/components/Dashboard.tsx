@@ -8,6 +8,7 @@ import AIAnalysisPanel from './AIAnalysisPanel';
 import NewsPanel from './NewsPanel';
 import ConfigPanel from './ConfigPanel';
 import StrategyComparison from './StrategyComparison';
+import StrategyHistory from './StrategyHistory';
 import { useDashboardSummary, triggerFullUpdate, useAIAnalysis, useAIAnalysisStatus } from '../hooks/useApi';
 import type { PlanCData } from '../types';
 
@@ -390,7 +391,19 @@ export default function Dashboard() {
             </div>
 
             {/* ============================================
-                Row 4: News Feed
+                Row 4: Strategy History
+                ============================================ */}
+            <section className="card-elevated">
+              <SectionHeader
+                icon={<Clock className="w-5 h-5" />}
+                title="策略历史"
+                accentColor="purple"
+              />
+              <StrategyHistory onOpenComparison={() => setShowComparison(true)} />
+            </section>
+
+            {/* ============================================
+                Row 5: News Feed
                 ============================================ */}
             <section className="card-elevated">
               <SectionHeader

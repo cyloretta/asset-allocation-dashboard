@@ -18,6 +18,9 @@ class MacroDataFetcher:
 
     # FRED series IDs for real data
     FRED_SERIES = {
+        'DGS10': 'DGS10',            # 10-Year Treasury Constant Maturity Rate
+        'DGS2': 'DGS2',              # 2-Year Treasury Constant Maturity Rate
+        'DGS30': 'DGS30',            # 30-Year Treasury Constant Maturity Rate
         'FEDFUNDS': 'DFF',           # Effective Federal Funds Rate (daily)
         'ICSA': 'ICSA',              # Initial Claims (weekly)
         'BAMLH0A0HYM2': 'BAMLH0A0HYM2',  # ICE BofA US High Yield Spread
@@ -53,13 +56,30 @@ class MacroDataFetcher:
         "M2_GROWTH": {"name": "M2 Growth", "description": "M2货币供应增速", "category": "economic"},
     }
 
+    # 静态回退数据（网络不可用时使用）
+    FALLBACK_DATA = {
+        "US10Y": {"value": 4.25, "source": "Fallback"},
+        "US2Y": {"value": 4.65, "source": "Fallback"},
+        "US3M": {"value": 5.25, "source": "Fallback"},
+        "US30Y": {"value": 4.45, "source": "Fallback"},
+        "T10Y2Y": {"value": -0.40, "source": "Fallback"},
+        "FEDFUNDS": {"value": 5.33, "source": "Fallback"},
+        "VIX": {"value": 18.5, "source": "Fallback"},
+        "DXY": {"value": 104.5, "source": "Fallback"},
+        "CREDIT_SPREAD": {"value": 3.5, "source": "Fallback"},
+        "JOBLESS_CLAIMS": {"value": 220000, "source": "Fallback"},
+        "CPI_YOY": {"value": 3.2, "source": "Fallback"},
+        "CORE_CPI_YOY": {"value": 3.8, "source": "Fallback"},
+    }
+
     def __init__(self):
         self.executor = ThreadPoolExecutor(max_workers=6)
         self._treasury_data = None
         self._treasury_fetch_time = None
         self._cache = {}  # 通用缓存
-        self._cache_ttl = timedelta(minutes=10)
+        self._cache_ttl = timedelta(hours=2)  # 2小时缓存
         self._fred_api_key = settings.fred_api_key if hasattr(settings, 'fred_api_key') else None
+        self._use_fallback = False  # 网络失败后切换到回退模式
 
     def _fetch_fred_series(self, series_id: str, limit: int = 1) -> dict:
         """从 FRED API 获取数据序列"""
@@ -75,7 +95,7 @@ class MacroDataFetcher:
                 'sort_order': 'desc',
                 'limit': limit
             }
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=5)
 
             if resp.status_code == 200:
                 data = resp.json()
@@ -96,25 +116,55 @@ class MacroDataFetcher:
         return {'success': False}
 
     def _fetch_treasury_yields(self) -> dict:
-        """从 Treasury.gov 获取国债收益率"""
+        """从 FRED 获取国债收益率（主数据源）"""
         # 缓存5分钟
         if self._treasury_data and self._treasury_fetch_time:
             if datetime.now() - self._treasury_fetch_time < timedelta(minutes=5):
                 return self._treasury_data
 
+        # 优先使用 FRED API（数据更新更及时）
+        try:
+            dgs10 = self._fetch_fred_series('DGS10')  # 10年期
+            dgs2 = self._fetch_fred_series('DGS2')    # 2年期
+            t10y2y = self._fetch_fred_series('T10Y2Y')  # 利差
+
+            if dgs10.get('success') and dgs2.get('success'):
+                us10y = dgs10['value']
+                us2y = dgs2['value']
+                spread = t10y2y.get('value', us10y - us2y) if t10y2y.get('success') else round(us10y - us2y, 2)
+
+                self._treasury_data = {
+                    'date': dgs10.get('date', datetime.now().strftime('%Y-%m-%d')),
+                    'US2Y': us2y,
+                    'US10Y': us10y,
+                    'US30Y': 0,  # FRED 需要单独查询 DGS30
+                    'T10Y2Y': spread,
+                    'source': 'FRED',
+                    'success': True
+                }
+                self._treasury_fetch_time = datetime.now()
+                return self._treasury_data
+        except Exception as e:
+            logger.warning(f"FRED Treasury fetch error: {e}")
+
+        # 备用：Treasury.gov
         try:
             year = datetime.now().year
             url = f"https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&page&_format=csv"
-            resp = requests.get(url, timeout=15)
+            resp = requests.get(url, timeout=5)
 
             if resp.status_code == 200:
                 df = pd.read_csv(StringIO(resp.text))
                 if not df.empty:
-                    # 获取最新一行
                     latest = df.iloc[-1]
                     date_str = latest['Date']
+                    # 转换日期格式 MM/DD/YYYY -> YYYY-MM-DD
+                    try:
+                        parsed_date = datetime.strptime(date_str, '%m/%d/%Y')
+                        date_str = parsed_date.strftime('%Y-%m-%d')
+                    except:
+                        pass
 
-                    # 解析收益率
                     us2y = float(latest.get('2 Yr', 0))
                     us10y = float(latest.get('10 Yr', 0))
                     us30y = float(latest.get('30 Yr', 0))
@@ -125,12 +175,13 @@ class MacroDataFetcher:
                         'US10Y': us10y,
                         'US30Y': us30y,
                         'T10Y2Y': round(us10y - us2y, 2),
+                        'source': 'Treasury.gov',
                         'success': True
                     }
                     self._treasury_fetch_time = datetime.now()
                     return self._treasury_data
         except Exception as e:
-            logger.error(f"Treasury fetch error: {e}")
+            logger.error(f"Treasury.gov fetch error: {e}")
 
         return {'success': False}
 
@@ -139,15 +190,19 @@ class MacroDataFetcher:
         try:
             resp = requests.get(
                 "https://stooq.com/q/l/?s=dx.f&f=sd2t2ohlcv&h&e=csv",
+                headers={'User-Agent': 'Mozilla/5.0'},
                 timeout=10
             )
             if resp.status_code == 200 and 'N/D' not in resp.text:
                 df = pd.read_csv(StringIO(resp.text))
                 if not df.empty:
                     row = df.iloc[0]
+                    date_str = str(row['Date'])
+                    # Stooq 格式通常是 YYYY-MM-DD，确保一致
                     return {
                         'value': float(row['Close']),
-                        'date': str(row['Date']),
+                        'date': date_str,
+                        'source': 'Stooq',
                         'success': True
                     }
         except Exception as e:
@@ -159,15 +214,24 @@ class MacroDataFetcher:
         try:
             # CBOE 官方 VIX 历史数据
             url = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
-            resp = requests.get(url, timeout=15)
+            resp = requests.get(url, timeout=5)
 
             if resp.status_code == 200:
                 df = pd.read_csv(StringIO(resp.text))
                 if not df.empty:
                     # 获取最新一行
                     latest = df.iloc[-1]
-                    date_str = latest.iloc[0]  # DATE 列
+                    date_str = str(latest.iloc[0])  # DATE 列
                     close = float(latest.iloc[4])  # CLOSE 列
+
+                    # 统一日期格式为 YYYY-MM-DD
+                    try:
+                        # CBOE 格式可能是 MM/DD/YYYY
+                        parsed_date = datetime.strptime(date_str, '%m/%d/%Y')
+                        date_str = parsed_date.strftime('%Y-%m-%d')
+                    except:
+                        pass
+
                     return {
                         'value': round(close, 2),
                         'date': date_str,
@@ -600,7 +664,7 @@ class MacroDataFetcher:
                 'sort_order': 'desc',
                 'limit': limit
             }
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(url, params=params, timeout=5)
 
             if resp.status_code == 200:
                 data = resp.json()
@@ -650,6 +714,14 @@ class MacroDataFetcher:
 
     async def fetch_all(self) -> Dict[str, dict]:
         """Fetch all macro indicators including new P0 indicators"""
+        # 检查整体缓存
+        cache_key = "macro_all"
+        if cache_key in self._cache:
+            cached_data, cache_time = self._cache[cache_key]
+            if datetime.now() - cache_time < self._cache_ttl:
+                logger.debug("Using cached macro data")
+                return cached_data
+
         loop = asyncio.get_event_loop()
 
         # 并行获取基础数据
@@ -896,6 +968,8 @@ class MacroDataFetcher:
                 'is_estimate': m2.get('is_estimate', False)
             }
 
+        # 保存到缓存
+        self._cache["macro_all"] = (indicators, datetime.now())
         return indicators
 
     async def fetch_indicator(self, series_id: str, days: int = 365) -> dict:

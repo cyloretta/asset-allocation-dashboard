@@ -1,5 +1,5 @@
 import feedparser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -53,9 +53,10 @@ class NewsFetcher:
             for entry in feed.entries[:10]:  # Limit to 10 per source
                 published = entry.get("published_parsed")
                 if published:
-                    pub_date = datetime(*published[:6])
+                    # RSS 返回的是 UTC 时间，需要标记时区
+                    pub_date = datetime(*published[:6], tzinfo=timezone.utc)
                 else:
-                    pub_date = datetime.now()
+                    pub_date = datetime.now(timezone.utc)
 
                 title = entry.get("title", "")
                 summary = entry.get("summary", entry.get("description", ""))
@@ -129,7 +130,7 @@ class NewsFetcher:
     async def get_market_news(self, hours: int = 24) -> List[dict]:
         """Get market-relevant news from the last N hours"""
         all_news = await self.fetch_all()
-        cutoff = datetime.now() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         return [n for n in all_news if n["published_at_dt"] >= cutoff]
 
     async def get_news_summary(self) -> dict:
