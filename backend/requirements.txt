@@ -16,3 +16,5 @@ tenacity>=8.2.0
 pydantic==2.6.0
 pydantic-settings==2.1.0
 scikit-learn==1.4.0
+openai>=1.0.0
+deep_translator>=1.11.0
