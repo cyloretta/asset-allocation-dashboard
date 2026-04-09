@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import axios from 'axios';
 import type {
@@ -496,4 +496,61 @@ export function useAllocationChanges(days = 90) {
 export async function compareSnapshots(snapshotIds: number[]) {
   const response = await api.post('/strategy/history/compare', { snapshot_ids: snapshotIds });
   return response.data.data;
+}
+
+// ============================================
+// 大师视角 Hooks
+// ============================================
+export interface MasterPerspectives {
+  taleb: {
+    verdict: string;
+    risk_score: number;
+    key_concerns: string[];
+    analysis: string;
+    barbell_suggestion: string;
+  };
+  munger: {
+    verdict: string;
+    confidence: number;
+    cognitive_biases: string[];
+    analysis: string;
+    inversion: string;
+  };
+  consensus: {
+    agree_on: string[];
+    disagree_on: string[];
+    final_advice: string;
+  };
+  timestamp: string;
+  is_mock?: boolean;
+  provider?: string;
+}
+
+export function useMasterPerspectives() {
+  const [data, setData] = useState<MasterPerspectives | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPerspectives = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.post('/analysis/master-perspectives');
+      setData(response.data.data);
+      return response.data.data;
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || 'Failed to fetch master perspectives';
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return {
+    data,
+    loading,
+    error,
+    fetchPerspectives
+  };
 }

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "munger-perspective": {
+      "source": "alchaincyf/munger-skill",
+      "sourceType": "github",
+      "computedHash": "6abb98dfd9d0cf588e0770cc10d1d0e01abd2fd9152378d3fac89d81ca3b2aa2"
+    },
+    "taleb-perspective": {
+      "source": "alchaincyf/taleb-skill",
+      "sourceType": "github",
+      "computedHash": "d54c350b1f9988f539877623039565fea2e8298fdd9f38a718cd49bcc2eaec1d"
+    }
+  }
+}

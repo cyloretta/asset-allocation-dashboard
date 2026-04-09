@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { RefreshCw, TrendingUp, Activity, PieChart, Brain, Newspaper, Settings, Clock, Zap, Sliders, GitCompare } from 'lucide-react';
+import { RefreshCw, TrendingUp, Activity, PieChart, Brain, Newspaper, Settings, Clock, Zap, Sliders, GitCompare, Users } from 'lucide-react';
 import MarketOverview from './MarketOverview';
 import MacroAnalysis from './MacroAnalysis';
 import AssetAllocation from './AssetAllocation';
@@ -9,6 +9,7 @@ import NewsPanel from './NewsPanel';
 import ConfigPanel from './ConfigPanel';
 import StrategyComparison from './StrategyComparison';
 import StrategyHistory from './StrategyHistory';
+import MasterPerspectives from './MasterPerspectives';
 import { useDashboardSummary, triggerFullUpdate, useAIAnalysis, useAIAnalysisStatus } from '../hooks/useApi';
 import type { PlanCData } from '../types';
 
@@ -403,7 +404,19 @@ export default function Dashboard() {
             </section>
 
             {/* ============================================
-                Row 5: News Feed
+                Row 5: Master Perspectives
+                ============================================ */}
+            <section className="card-elevated">
+              <SectionHeader
+                icon={<Users className="w-5 h-5" />}
+                title="大师视角"
+                accentColor="pink"
+              />
+              <MasterPerspectives />
+            </section>
+
+            {/* ============================================
+                Row 6: News Feed
                 ============================================ */}
             <section className="card-elevated">
               <SectionHeader

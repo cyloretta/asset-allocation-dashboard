@@ -379,3 +379,139 @@ class AIAnalyst:
         allocation = {k: round(v / total, 4) for k, v in allocation.items()}
 
         return allocation
+
+    async def analyze_master_perspectives(
+        self,
+        allocation: Dict[str, float],
+        market_data: Dict,
+        macro_data: Dict
+    ) -> Dict:
+        """
+        使用塔勒布和芒格的思维框架分析当前资产配置
+        """
+        if not self.client:
+            return self._get_mock_master_perspectives(allocation)
+
+        prompt = f"""你需要扮演两位投资大师，对以下资产配置方案进行分析和点评。
+
+## 当前资产配置
+{json.dumps(allocation, indent=2, ensure_ascii=False)}
+
+## 市场数据
+{json.dumps(market_data, indent=2, ensure_ascii=False)}
+
+## 宏观环境
+{json.dumps(macro_data, indent=2, ensure_ascii=False)}
+
+请分别以塔勒布(Nassim Taleb)和芒格(Charlie Munger)的视角进行分析：
+
+### 塔勒布视角要求：
+- 用塔勒布的思维框架：反脆弱性、尾部风险、杠铃策略、skin in the game
+- 关注：这个配置有没有隐藏的尾部风险？是否具有反脆弱性？有没有遍历性问题？
+- 风格：格言体、直接、有攻击性、用古典类比
+
+### 芒格视角要求：
+- 用芒格的思维框架：逆向思考、认知偏误、能力圈、Lollapalooza效应
+- 关注：这个配置有什么认知偏误？怎样会亏钱？激励结构是否合理？
+- 风格：极短句、否定句优先、干燥幽默、直接给结论
+
+请以JSON格式返回：
+{{
+    "taleb": {{
+        "verdict": "反脆弱/脆弱/中性",
+        "risk_score": 0-100,
+        "key_concerns": ["关注点1", "关注点2", "关注点3"],
+        "analysis": "详细分析（200-300字，用塔勒布的语气）",
+        "barbell_suggestion": "杠铃策略建议（如有）"
+    }},
+    "munger": {{
+        "verdict": "明智/愚蠢/需要更多思考",
+        "confidence": 0-100,
+        "cognitive_biases": ["可能存在的偏误1", "偏误2"],
+        "analysis": "详细分析（200-300字，用芒格的语气）",
+        "inversion": "逆向思考：怎样会让这个配置失败？"
+    }},
+    "consensus": {{
+        "agree_on": ["两位大师都同意的点"],
+        "disagree_on": ["两位大师观点不同的点"],
+        "final_advice": "综合建议（一句话）"
+    }}
+}}
+"""
+
+        try:
+            if self.provider == "deepseek":
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2048,
+                    temperature=0.8
+                )
+                response_text = response.choices[0].message.content
+            else:
+                message = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=2048,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                response_text = message.content[0].text
+
+            result = self._extract_json_from_response(response_text)
+            if result is None:
+                logger.warning("Failed to parse master perspectives response")
+                return self._get_mock_master_perspectives(allocation)
+
+            result["timestamp"] = datetime.now().isoformat()
+            result["provider"] = self.provider
+            return result
+
+        except Exception as e:
+            logger.error(f"Master perspectives analysis error: {e}")
+            return self._get_mock_master_perspectives(allocation)
+
+    def _get_mock_master_perspectives(self, allocation: Dict) -> Dict:
+        """返回模拟的大师视角分析"""
+        btc_weight = allocation.get("BTC-USD", 0)
+        stock_weight = allocation.get("SPY", 0) + allocation.get("QQQ", 0)
+
+        return {
+            "taleb": {
+                "verdict": "脆弱" if btc_weight > 0.15 else "中性",
+                "risk_score": 65,
+                "key_concerns": [
+                    "加密货币敞口存在遍历性风险",
+                    "科技股集中度可能导致尾部损失",
+                    "缺乏真正的反脆弱资产"
+                ],
+                "analysis": "让我直说：你的组合在Extremistan里玩Mediocristan的游戏。"
+                           f"BTC占{btc_weight*100:.0f}%——这不是投资，这是赌博。"
+                           "一个真正的杠铃策略应该是90%在最安全的资产，10%在最疯狂的赌注。"
+                           "你现在是中间地带，最脆弱的位置。记住：火鸡在感恩节前的每一天都很快乐。",
+                "barbell_suggestion": f"建议：将CASH提高到20%，TLT提高到30%，BTC保留但控制在5%以内。"
+            },
+            "munger": {
+                "verdict": "需要更多思考",
+                "confidence": 55,
+                "cognitive_biases": [
+                    "近因偏误 - 可能过度基于近期表现",
+                    "社会认同 - AI/科技热潮影响",
+                    "过度自信 - 对模型优化的信任"
+                ],
+                "analysis": f"股票占{stock_weight*100:.0f}%，问题不在于多少，而在于你是否理解你买的是什么。"
+                           "大多数人买QQQ是因为别人在赚钱，这是最蠢的理由。"
+                           "我的问题是：如果科技股跌50%，你能说出为什么吗？如果不能，你就在能力圈外面。",
+                "inversion": "逆向思考：这个配置在以下情况会失败：1)利率持续上升 2)AI泡沫破裂 3)地缘冲突升级。你对这三种情况有对冲吗？"
+            },
+            "consensus": {
+                "agree_on": [
+                    "当前配置缺乏足够的防御性",
+                    "需要更清晰地认识风险来源"
+                ],
+                "disagree_on": [
+                    "塔勒布倾向极端杠铃，芒格更看重理解能力圈"
+                ],
+                "final_advice": "减少投机敞口，增加你真正理解的资产，保持足够现金以应对黑天鹅。"
+            },
+            "timestamp": datetime.now().isoformat(),
+            "is_mock": True
+        }

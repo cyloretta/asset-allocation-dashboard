@@ -1,19 +1,73 @@
 # 资产配置看板 - 开发进度
 
-**最后更新**: 2026-03-25
+**最后更新**: 2026-04-06
 
 ## 项目概述
 AI 驱动的动态资产配置策略看板，基于宏观分析自动生成投资组合建议。
 
 ## 技术栈
-- **后端**: FastAPI + Python (yfinance, FRED API, Claude API, SQLite, APScheduler)
+- **后端**: FastAPI + Python (多数据源架构, FRED API, Claude/DeepSeek API, SQLite, APScheduler)
+  - 数据源: Stooq (主), CoinGecko, Binance (Yahoo 被墙已禁用)
 - **前端**: React 18 + TypeScript + Vite + Tailwind CSS + Recharts + SWR
+- **外网访问**: Cloudflare Tunnel (`https://dashboard.cgfund.cloud`)
 
-## 当前状态: 核心功能完成 + UI 美化 ✅
+## 当前状态: 外网访问已配置 ✅ 生产模式部署 ✅
 
 ---
 
-## 最新更新 (2026-03-25)
+## 最新更新 (2026-04-03)
+
+### 1. 多数据源架构 ✅
+新增 `data/data_providers.py` - 实现数据源抽象和自动故障转移:
+
+**数据源优先级:**
+| 资产类型 | 主数据源 | 备份数据源 | 最终后备 |
+|---------|---------|-----------|---------|
+| 股票/ETF | Yahoo Finance | Stooq | 模拟数据 |
+| 加密货币 | CoinGecko | Binance | 模拟数据 |
+
+**核心特性:**
+- **自动故障转移**: 主数据源失败时自动切换到备份
+- **内存缓存**: 价格缓存 5 分钟，历史数据缓存 1 小时
+- **重试机制**: 带指数退避的自动重试 (最多 3 次)
+- **健康检测**: 实时监控各数据源状态
+
+**新增 API:**
+- `GET /api/system/data-sources` - 查看数据源健康状态
+- `POST /api/system/clear-cache` - 清空数据缓存
+
+### 2. 移动端响应式优化 ✅
+- **Header 重构**: 移动端汉堡菜单，桌面端完整控制栏
+- **MarketOverview**: 优化卡片尺寸和网格布局 (2/3/4/5 列自适应)
+- **触摸友好**: 添加 `active:scale` 触摸反馈效果
+- **字体缩放**: 移动端更小的字体尺寸
+
+### 2. Toast 通知系统 ✅
+新增 `components/Toast.tsx`:
+- 全局 Toast Provider + useToast Hook
+- 四种类型: `success` / `error` / `warning` / `info`
+- Cyber 主题样式 (发光边框、霓虹配色)
+- 自动消失 (4秒) + 手动关闭
+
+### 3. 策略导出功能 ✅
+- 配置方案区域新增「导出」按钮
+- 使用 `html2canvas` 截图并保存为 PNG
+- 文件名: `asset-allocation-YYYY-MM-DD.png`
+
+### 4. 操作反馈增强 ✅
+- 「全量同步」操作增加 Toast 提示
+- 「AI 分析」运行状态通知
+- 「策略优化」完成/失败提示
+
+### 5. 下拉刷新组件 ✅
+新增 `components/PullToRefresh.tsx`:
+- 触摸下拉刷新 (移动端)
+- 阈值判断 + 回弹动画
+- 可选集成到 Dashboard
+
+---
+
+## 更新 (2026-03-25)
 
 ### 1. Cyber Fintech 主题实现 ✅
 全面升级 UI 为赛博科技风格：
@@ -190,17 +244,17 @@ FRED_API_KEY=...          # 宏观数据 (可选，有 mock 后备)
 
 ### 高优先级
 1. **外网访问** - ngrok/cloudflare tunnel (需注册账号)
-2. **移动端适配** - 响应式布局优化
+2. ~~**移动端适配** - 响应式布局优化~~ ✅ 已完成
 
 ### 中优先级
-3. **真实数据接入** - 解决 yfinance/FRED 网络问题
+3. ~~**真实数据接入** - 解决 yfinance/FRED 网络问题~~ ✅ 已实现多数据源架构
 4. **数据持久化** - 将策略和分析结果保存到 SQLite
 5. **用户配置** - 自定义资产池、风险偏好参数
 
 ### 低优先级
 6. **历史策略对比** - 展示策略变化趋势图
-7. **通知功能** - 重大市场变化时推送提醒
-8. **导出报告** - PDF/Excel 导出功能
+7. ~~**通知功能** - 重大市场变化时推送提醒~~ ✅ 已实现 Toast 通知
+8. ~~**导出报告** - PDF/Excel 导出功能~~ ✅ 已实现 PNG 截图导出
 
 ---
 
@@ -211,8 +265,9 @@ asset-allocation-dashboard/
 ├── backend/
 │   ├── main.py              # FastAPI 主程序
 │   ├── config.py            # 配置
-│   ├── data/                # 数据获取 (yfinance, FRED, RSS)
-│   │   └── market_data.py   # 含 mock 数据后备
+│   ├── data/                # 数据获取 (多数据源架构)
+│   │   ├── data_providers.py # 多数据源调度器 (Stooq/CoinGecko/Binance/Yahoo)
+│   │   └── market_data.py    # 市场数据封装
 │   ├── analysis/            # AI 分析 + 技术分析
 │   ├── strategy/            # 组合优化 + 回测
 │   │   └── optimizer.py     # 已修复 JSON 序列化问题
@@ -237,8 +292,225 @@ asset-allocation-dashboard/
 ## 下次继续开发
 
 发送此文件内容给 Claude，或直接说：
-> "继续开发资产配置看板，上次完成了 Cyber 主题和中文界面"
+> "继续开发资产配置看板"
 
-或查看具体任务:
-> "帮我实现外网访问功能"
-> "优化移动端显示效果"
+### 启动命令
+```bash
+cd ~/asset-allocation-dashboard
+# 后端
+cd backend && source venv/bin/activate && python main.py &
+# 前端
+cd ../frontend && npm run dev
+# 打开浏览器 http://localhost:5173
+```
+
+### 待完成功能
+1. ~~**外网访问**~~ ✅ 已完成 - `https://dashboard.cgfund.cloud`
+2. **用户自定义资产池** - 允许用户添加/删除资产
+3. **隧道开机自启** - 配置 launchd 让 cloudflared 开机自动运行
+
+---
+
+## Claude 工作备忘 (2026-04-06 续2) ⭐ 最新
+
+### 调试中：策略优化不显示结果
+
+#### 问题表现
+用户报告点击"策略优化"后不显示结果
+
+#### 错误追踪
+1. `{"detail":"'allocation'"}` - KeyError，optimizer 返回了错误字典
+2. `{"detail":"400: Insufficient data: 0 days, minimum 60 required"}` - 没有数据
+3. `{"detail":"cannot reindex on an axis with duplicate labels"}` - 索引重复问题
+
+#### 已完成修复
+1. **main.py (~L673)**: 添加 optimizer 返回错误的检查
+   ```python
+   if "error" in result:
+       raise HTTPException(status_code=400, detail=result["error"])
+   ```
+
+2. **market_data.py**: 重写 `get_historical_returns` 方法
+   - 解决不同数据源日期索引不匹配问题
+   - 添加索引去重代码：`close_series[~close_series.index.duplicated(keep='last')]`
+   - 使用 reindex 对齐不同数据源的日期
+
+#### 下次继续
+1. 重启后端: `cd ~/asset-allocation-dashboard/backend && source venv/bin/activate && python main.py &`
+2. 测试策略优化:
+   ```bash
+   curl -s -X POST "http://localhost:8000/api/strategy/optimize" \
+     -H "Content-Type: application/json" \
+     -H "Cookie: dashboard_auth=f747bdea14a56eb5d819343f5bde1ecb" \
+     -d '{"method":"composite","use_ai_adjustments":true}'
+   ```
+3. 如果 Cookie 过期，先访问页面输入密码获取新 Cookie
+
+---
+
+## Claude 工作备忘 (2026-04-06 续)
+
+### 本次完成：Dashboard 策略历史图表
+
+#### 新增功能
+- **StrategyHistory 组件** (`frontend/src/components/StrategyHistory.tsx`)
+  - 策略指标趋势图（Sharpe / 预期收益 / 最大回撤）
+  - 支持 7D / 30D / 90D 时间范围切换
+  - 指标摘要卡片（平均值、趋势方向、范围）
+  - 配置变化记录（可折叠显示）
+  - 「详细对比」按钮跳转到完整对比模态框
+
+#### Dashboard 集成
+- 在"策略优化"/"配置方案"下方新增"策略历史"区块
+- 使用已有的 `/api/strategy/history/trend` 和 `/api/strategy/history/allocation-changes` API
+- 区域图展示选中指标的历史走势
+
+#### 已知问题
+- **Safari 浏览器兼容性问题**：页面黑屏，请使用 Chrome 访问
+
+#### 修改文件
+| 文件 | 修改内容 |
+|------|---------|
+| `frontend/src/components/StrategyHistory.tsx` | 新组件 |
+| `frontend/src/components/Dashboard.tsx` | 导入并集成 StrategyHistory |
+| `frontend/dist/` | 重新构建 |
+
+---
+
+## Claude 工作备忘 (2026-04-06)
+
+### 完成：外网访问 + 性能优化
+
+#### 1. Cloudflare Tunnel 配置 ✅
+- **域名**: `cgfund.cloud` (腾讯云注册，NS 指向 Cloudflare)
+- **隧道 ID**: `6360ba76-e666-43a0-b530-701d3cadc0e8`
+- **访问地址**:
+  - `https://dashboard.cgfund.cloud` - 主站
+  - `https://cgfund.cloud` - 根域名
+  - `https://api.cgfund.cloud` - API
+
+**隧道配置文件** `~/.cloudflared/config.yml`:
+```yaml
+tunnel: 6360ba76-e666-43a0-b530-701d3cadc0e8
+credentials-file: /Users/apple/.cloudflared/6360ba76-e666-43a0-b530-701d3cadc0e8.json
+protocol: http2
+
+ingress:
+  - hostname: cgfund.cloud
+    service: http://localhost:8000
+  - hostname: dashboard.cgfund.cloud
+    service: http://localhost:8000
+  - hostname: api.cgfund.cloud
+    service: http://localhost:8000
+  - service: http_status:404
+```
+
+#### 2. 生产模式部署 ✅
+- 前端已构建 (`npm run build`)，由后端 FastAPI 服务静态文件
+- 不再需要运行 `npm run dev`
+- **只需启动后端 + 隧道**
+
+#### 3. 性能优化 ✅
+**问题**: 首次加载 30+ 秒（Yahoo Finance 和 FRED API 被墙超时）
+
+**解决方案**:
+1. 数据源优先级调整 - 跳过 Yahoo，直接用 Stooq
+   - 修改: `backend/data/data_providers.py` 第 477 行
+2. 增加缓存时间
+   - 价格缓存: 5分钟 → 10分钟
+   - 历史缓存: 1小时 → 2小时
+   - 宏观缓存: 10分钟 → 2小时
+3. FRED API 超时: 10秒 → 5秒
+4. **启动预热**: 后端启动时自动加载数据到缓存
+   - 修改: `backend/main.py` 添加 `warmup_cache()` 函数
+
+**效果**:
+- 首次请求（预热后）: 0.04 秒
+- 外网访问: ~0.6 秒
+
+#### 4. Vite 配置 ✅
+- 添加 `allowedHosts` 允许外网域名访问
+- 修改: `frontend/vite.config.ts`
+
+---
+
+### 重要：启动命令（生产模式）
+
+```bash
+# 1. 启动后端（会自动预热缓存，等 30 秒左右）
+cd ~/asset-allocation-dashboard/backend && source venv/bin/activate && python main.py &
+
+# 2. 启动隧道
+cloudflared tunnel run dashboard &
+
+# 3. 检查服务
+lsof -i :8000  # 后端
+pgrep -f cloudflared  # 隧道
+```
+
+### 停止服务
+```bash
+pkill -f "python main.py"
+pkill -f "cloudflared tunnel"
+```
+
+### 如果隧道断开 (Error 1033)
+```bash
+pkill -f cloudflared
+cloudflared tunnel run dashboard &
+```
+
+---
+
+### 关键文件（本次修改）
+
+| 文件 | 修改内容 |
+|------|---------|
+| `~/.cloudflared/config.yml` | 隧道路由配置 |
+| `~/.cloudflared/cert.pem` | Cloudflare 认证证书 |
+| `~/.cloudflared/6360ba76-*.json` | 隧道凭证 |
+| `backend/main.py` | 添加静态文件服务 + 启动预热 |
+| `backend/data/data_providers.py` | 跳过 Yahoo，增加缓存 |
+| `backend/data/macro_data.py` | 增加缓存时间，减少超时 |
+| `frontend/vite.config.ts` | 添加 allowedHosts |
+| `frontend/dist/` | 生产构建输出 |
+
+---
+
+### 待解决 / 已知问题
+
+1. **隧道稳定性** - 偶尔断开，需要重启 (`cloudflared tunnel run dashboard`)
+2. **SSL 证书** - Cloudflare Universal SSL，首次配置可能需要等几分钟
+3. **数据延迟** - Stooq/FRED 数据有缓存，非实时
+
+---
+
+### Cloudflare 账号信息（用户需记住）
+
+- **域名**: cgfund.cloud
+- **NS 服务器**:
+  - tegan.ns.cloudflare.com
+  - vasilii.ns.cloudflare.com
+- **SSL 模式**: Flexible
+- **隧道名称**: dashboard
+
+---
+
+## Claude 工作备忘 (2026-04-03)
+
+### 完成内容
+1. **多数据源架构** - `backend/data/data_providers.py`
+   - Yahoo → Stooq → Mock 自动故障转移
+   - 内存缓存 (价格5分钟, 历史1小时)
+   - API: `/api/system/data-sources`, `/api/system/clear-cache`
+
+2. **数据时效性修复**
+   - 国债收益率改用 FRED API (DGS10, DGS2, T10Y2Y)
+   - 新闻时间添加 UTC 时区 (`+00:00`)
+   - 前端宏观指标显示更新日期
+
+### 关键文件
+- `backend/data/data_providers.py` - 多数据源调度
+- `backend/data/macro_data.py` - 宏观数据 (FRED API)
+- `backend/data/news_data.py` - 新闻 RSS (UTC时区)
+- `frontend/src/components/MacroAnalysis.tsx` - 宏观面板 (显示日期)

@@ -548,6 +548,49 @@ async def run_ai_analysis(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/analysis/master-perspectives")
+async def get_master_perspectives():
+    """
+    获取大师视角分析 - 塔勒布和芒格对当前配置的点评
+    """
+    try:
+        # 获取当前配置
+        async with async_session() as session:
+            strategy = await get_latest_strategy(session)
+
+        if not strategy or not strategy.allocation:
+            raise HTTPException(status_code=400, detail="没有可用的资产配置方案，请先运行策略优化")
+
+        # 获取市场数据
+        prices = await market_fetcher.get_current_prices()
+        macro = await macro_fetcher.get_macro_indicators()
+
+        # 简化市场数据用于分析
+        market_summary = {
+            ticker: {
+                "price": info.get("price"),
+                "change": info.get("change"),
+                "weight": strategy.allocation.get(ticker, 0)
+            }
+            for ticker, info in prices.items()
+        }
+
+        # 生成大师视角分析
+        result = await ai_analyst.analyze_master_perspectives(
+            allocation=strategy.allocation,
+            market_data=market_summary,
+            macro_data=macro
+        )
+
+        return {"data": result}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting master perspectives: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/analysis/accuracy")
 async def get_ai_accuracy():
     """获取 AI 预测准确率统计（P2）"""
