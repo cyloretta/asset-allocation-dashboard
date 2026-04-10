@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 scheduler_manager = SchedulerManager()
 
-# 访问密码配置
-ACCESS_PASSWORD = "1124"
+# 访问密码配置（支持环境变量覆盖）
+ACCESS_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "1124")
 AUTH_COOKIE_NAME = "dashboard_auth"
 AUTH_TOKEN = hashlib.sha256(f"dashboard_{ACCESS_PASSWORD}_secret".encode()).hexdigest()[:32]
 
