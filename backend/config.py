@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         "GLD": {"name": "Gold ETF", "type": "commodity", "min_weight": 0.0, "max_weight": 0.3},
         "BTC-USD": {"name": "Bitcoin", "type": "crypto", "min_weight": 0.0, "max_weight": 0.2},
         "TLT": {"name": "US Treasury Bond ETF", "type": "bond", "min_weight": 0.0, "max_weight": 0.4},
-        "CASH": {"name": "USD Cash", "type": "cash", "min_weight": 0.05, "max_weight": 1.0},
+        "CASH": {"name": "USD Cash", "type": "cash", "min_weight": 0.05, "max_weight": 0.5},
     }
 
     # Optimization constraints

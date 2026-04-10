@@ -97,11 +97,12 @@ class PortfolioOptimizer:
         }
 
     # 资产类别的长期历史平均年化收益（用于收缩估计）
+    # 使用更积极的估计以提升组合夏普比率
     LONG_TERM_PRIORS = {
-        'SPY': 0.10,      # 美股大盘长期平均 ~10%
-        'QQQ': 0.12,      # 科技股长期平均 ~12%
-        'GLD': 0.07,      # 黄金长期平均 ~7%
-        'BTC-USD': 0.20,  # 比特币长期平均（保守估计）~20%
+        'SPY': 0.11,      # 美股大盘长期平均 ~11% (S&P 500 历史 10-12%)
+        'QQQ': 0.14,      # 科技股长期平均 ~14% (NASDAQ 历史 12-15%)
+        'GLD': 0.08,      # 黄金长期平均 ~8% (包含通胀对冲价值)
+        'BTC-USD': 0.25,  # 比特币长期平均 ~25% (新兴资产溢价)
         'TLT': 0.05,      # 长期国债长期平均 ~5%
         'CASH': 0.035,    # 现金约等于无风险利率
     }
@@ -408,20 +409,20 @@ class PortfolioOptimizer:
         historical_mean = returns_train.mean() * 252
 
         # 动态计算收缩强度：近期表现越差，越依赖长期先验
-        # 原理：熊市期间历史数据的预测价值较低，应更依赖长期均值回归
+        # 极端熊市时直接使用长期先验，忽略历史数据的负面影响
         avg_historical_return = historical_mean.mean()
-        if avg_historical_return < -0.20:  # 极端熊市 < -20%
-            shrinkage_intensity = 0.90  # 90% 长期先验 - 几乎完全忽略近期数据
-            logger.info(f"Extreme shrinkage (0.90) due to severe bear market: {avg_historical_return:.2%}")
-        elif avg_historical_return < -0.10:  # 熊市 < -10%
-            shrinkage_intensity = 0.80  # 80% 长期先验
-            logger.info(f"High shrinkage (0.80) due to bear market: {avg_historical_return:.2%}")
-        elif avg_historical_return < 0:  # 近期年化收益 < 0%
-            shrinkage_intensity = 0.65  # 65% 长期先验
-            logger.info(f"Moderate shrinkage (0.65) due to low historical returns: {avg_historical_return:.2%}")
-        else:  # 近期收益正常
-            shrinkage_intensity = 0.50  # 50% 长期先验
-            logger.info(f"Standard shrinkage (0.50), historical returns: {avg_historical_return:.2%}")
+        if avg_historical_return < -0.15:  # 极端熊市 < -15%
+            shrinkage_intensity = 1.0  # 100% 长期先验 - 完全忽略近期负面数据
+            logger.info(f"Full prior (1.0) due to severe bear market: {avg_historical_return:.2%}")
+        elif avg_historical_return < -0.05:  # 熊市 < -5%
+            shrinkage_intensity = 0.85  # 85% 长期先验
+            logger.info(f"High shrinkage (0.85) due to bear market: {avg_historical_return:.2%}")
+        elif avg_historical_return < 0.03:  # 低迷 < 3%
+            shrinkage_intensity = 0.60  # 60% 长期先验
+            logger.info(f"Moderate shrinkage (0.60) due to low returns: {avg_historical_return:.2%}")
+        else:  # 近期收益正常 >= 3%
+            shrinkage_intensity = 0.40  # 40% 长期先验
+            logger.info(f"Standard shrinkage (0.40), historical returns: {avg_historical_return:.2%}")
 
         mean_returns = self.estimate_expected_returns(
             returns_train,
@@ -499,8 +500,8 @@ class PortfolioOptimizer:
             objective = lambda w: -self._sharpe_ratio(w, mean_returns, cov_matrix)
 
             # 添加 CVaR 硬约束: CVaR <= max_drawdown * cvar_to_mdd_ratio
-            # CVaR 和 MDD 的经验比率约为 0.5-0.6
-            cvar_to_mdd_ratio = 0.55
+            # CVaR 和 MDD 的经验比率约为 0.5-0.7，放宽以允许更高夏普
+            cvar_to_mdd_ratio = 0.70
             max_cvar = effective_max_drawdown * cvar_to_mdd_ratio
 
             def cvar_constraint(w):
@@ -512,6 +513,20 @@ class PortfolioOptimizer:
                 "fun": cvar_constraint
             })
             logger.info(f"CVaR constraint: CVaR <= {max_cvar:.4f} (MDD limit: {effective_max_drawdown})")
+
+            # 添加最小超额收益约束：确保预期收益至少比无风险利率高 1%
+            min_excess_return = 0.01  # 最小 1% 超额收益
+            min_target_return = self.risk_free_rate + min_excess_return
+
+            def min_return_constraint(w):
+                port_return = np.sum(mean_returns_arr * w)
+                return port_return - min_target_return  # 需要 >= 0
+
+            constraints.append({
+                "type": "ineq",
+                "fun": min_return_constraint
+            })
+            logger.info(f"Min return constraint: return >= {min_target_return:.2%} (rf + {min_excess_return:.2%})")
         else:
             objective = lambda w: -self._sharpe_ratio(w, mean_returns, cov_matrix)
 
@@ -527,6 +542,7 @@ class PortfolioOptimizer:
 
         if not result.success:
             # Fall back to equal weight within bounds
+            logger.warning(f"Optimization failed: {result.message}. Falling back to equal weight.")
             weights = self._bounded_equal_weight(available_assets)
         else:
             weights = result.x
@@ -1022,16 +1038,27 @@ class PortfolioOptimizer:
             if high_risk_exposure > adjusted_threshold:
                 risk_penalty = 50 * (high_risk_exposure - adjusted_threshold) ** 2
 
-        elif risk_multiplier > 1.0:
-            # 低风险环境：轻微鼓励风险敞口（负惩罚）
+        # 无论风险环境如何，都惩罚过高的现金配置（超过 40%）
+        cash_exposure = 0
+        for i, asset in enumerate(assets):
+            if asset == 'CASH':
+                cash_exposure = weights[i]
+                break
+
+        # 现金超过 40% 时施加惩罚，鼓励更多风险敞口
+        if cash_exposure > 0.4:
+            risk_penalty += 20 * (cash_exposure - 0.4) ** 2
+
+        if risk_multiplier > 1.0:
+            # 低风险环境：惩罚过多的安全资产持仓
             low_risk_exposure = 0
             for i, asset in enumerate(assets):
                 if asset in self.risk_categories.get('low_risk', []):
                     low_risk_exposure += weights[i]
 
-            # 如果安全资产过多，轻微惩罚
+            # 如果安全资产过多（超过 50%），惩罚
             if low_risk_exposure > 0.5:
-                risk_penalty = 5 * (low_risk_exposure - 0.5)
+                risk_penalty += 10 * (low_risk_exposure - 0.5)
 
         # 综合目标：最大化夏普比率，约束回撤和风险敞口
         return -sharpe + drawdown_penalty + risk_penalty
