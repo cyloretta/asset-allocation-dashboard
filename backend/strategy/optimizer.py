@@ -614,6 +614,22 @@ class PortfolioOptimizer:
         logger.info(f"Expected Volatility: {horizon_vol:.2%}")
         logger.info(f"Horizon Sharpe: {horizon_sharpe:.4f}")
 
+        # ============================================
+        # 夏普比率解释：当 Sharpe < 1 时说明原因
+        # ============================================
+        sharpe_explanation = None
+        if sharpe < 1.0:
+            sharpe_explanation = self._generate_sharpe_explanation(
+                sharpe=sharpe,
+                portfolio_return=portfolio_return,
+                portfolio_vol=portfolio_vol,
+                mean_returns=mean_returns,
+                avg_historical_return=avg_historical_return,
+                shrinkage_intensity=shrinkage_intensity,
+                correlation_regime=correlation_regime,
+                allocation=allocation
+            )
+
         return {
             "allocation": allocation,
             "metrics": {
@@ -649,7 +665,8 @@ class PortfolioOptimizer:
             "lookback_days": len(returns_recent),
             "shrinkage_intensity": shrinkage_intensity,
             "covariance_method": "ledoit_wolf" if HAS_SKLEARN else "simple",
-            "ai_adjustments_integrated": bool(ai_adjustments)  # 标识 AI 调整是否已整合到优化
+            "ai_adjustments_integrated": bool(ai_adjustments),  # 标识 AI 调整是否已整合到优化
+            "sharpe_explanation": sharpe_explanation  # 当 Sharpe < 1 时的解释
         }
 
     def _sharpe_ratio(
@@ -667,6 +684,142 @@ class PortfolioOptimizer:
     ) -> float:
         """Calculate portfolio volatility"""
         return np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+
+    def _generate_sharpe_explanation(
+        self,
+        sharpe: float,
+        portfolio_return: float,
+        portfolio_vol: float,
+        mean_returns: pd.Series,
+        avg_historical_return: float,
+        shrinkage_intensity: float,
+        correlation_regime: Optional[Dict],
+        allocation: Dict[str, float]
+    ) -> Dict:
+        """
+        生成夏普比率解释，说明为什么当前夏普比率未能达到目标水平
+
+        Returns:
+            Dict with 'summary' (简短摘要) and 'factors' (详细因素列表)
+        """
+        factors = []
+
+        # 1. 市场环境分析
+        if avg_historical_return < -0.20:
+            factors.append({
+                "factor": "极端熊市环境",
+                "impact": "高",
+                "detail": f"近期年化收益为 {avg_historical_return:.1%}，处于极端熊市。"
+                          f"历史数据的预测价值降低，优化器使用 {shrinkage_intensity:.0%} 的长期先验权重来避免过度悲观估计。"
+            })
+        elif avg_historical_return < -0.10:
+            factors.append({
+                "factor": "熊市环境",
+                "impact": "高",
+                "detail": f"近期年化收益为 {avg_historical_return:.1%}，市场处于下跌周期。"
+                          f"优化器增加长期先验权重至 {shrinkage_intensity:.0%} 以平衡短期负面数据。"
+            })
+        elif avg_historical_return < 0:
+            factors.append({
+                "factor": "市场疲软",
+                "impact": "中",
+                "detail": f"近期年化收益为 {avg_historical_return:.1%}，低于历史平均水平。"
+            })
+
+        # 2. 波动率分析
+        if portfolio_vol > 0.15:
+            factors.append({
+                "factor": "高波动率环境",
+                "impact": "高",
+                "detail": f"组合年化波动率为 {portfolio_vol:.1%}，高波动率压低了风险调整收益。"
+            })
+        elif portfolio_vol > 0.10:
+            factors.append({
+                "factor": "中等波动率",
+                "impact": "中",
+                "detail": f"组合年化波动率为 {portfolio_vol:.1%}，处于正常范围。"
+            })
+
+        # 3. 收益率与无风险利率比较
+        excess_return = portfolio_return - self.risk_free_rate
+        if excess_return < 0:
+            factors.append({
+                "factor": "预期收益低于无风险利率",
+                "impact": "高",
+                "detail": f"组合预期收益 {portfolio_return:.1%} 低于无风险利率 {self.risk_free_rate:.1%}，"
+                          f"导致负的超额收益 ({excess_return:.1%})。"
+            })
+        elif excess_return < 0.03:
+            factors.append({
+                "factor": "超额收益有限",
+                "impact": "中",
+                "detail": f"组合预期超额收益仅为 {excess_return:.1%}（预期收益 {portfolio_return:.1%} - 无风险利率 {self.risk_free_rate:.1%}）。"
+            })
+
+        # 4. 相关性分析
+        if correlation_regime:
+            avg_corr = correlation_regime.get("avg_correlation", 0)
+            if avg_corr > 0.6:
+                factors.append({
+                    "factor": "资产高度相关",
+                    "impact": "中",
+                    "detail": f"资产平均相关性为 {avg_corr:.2f}，分散化效果受限，难以通过组合降低整体风险。"
+                })
+
+        # 5. 约束条件分析
+        cash_weight = allocation.get("CASH", 0)
+        if cash_weight > 0.4:
+            factors.append({
+                "factor": "高现金配置",
+                "impact": "中",
+                "detail": f"为满足风险约束，现金配置达到 {cash_weight:.0%}，限制了组合的潜在收益。"
+            })
+
+        # 6. 检查是否有资产触及最大权重限制
+        constrained_assets = []
+        for asset, weight in allocation.items():
+            max_weight = self.assets.get(asset, {}).get("max_weight", 1.0)
+            if weight > 0 and abs(weight - max_weight) < 0.01:
+                constrained_assets.append(f"{asset}({max_weight:.0%})")
+        if constrained_assets:
+            factors.append({
+                "factor": "权重上限约束",
+                "impact": "低",
+                "detail": f"以下资产达到最大权重限制：{', '.join(constrained_assets)}。"
+                          f"这防止了过度集中，但也限制了对高收益资产的配置。"
+            })
+
+        # 生成摘要
+        if sharpe < 0:
+            summary = (
+                f"当前夏普比率为负值 ({sharpe:.2f})，主要原因是预期收益 ({portfolio_return:.1%}) "
+                f"低于无风险利率 ({self.risk_free_rate:.1%})。这通常发生在熊市环境中，"
+                f"优化器优先选择低风险配置以控制潜在损失。"
+            )
+        elif sharpe < 0.5:
+            summary = (
+                f"夏普比率较低 ({sharpe:.2f})，受市场环境和风险约束影响。"
+                f"在当前条件下，优化器在风险控制和收益追求之间取得平衡。"
+            )
+        else:
+            summary = (
+                f"夏普比率为 {sharpe:.2f}，处于可接受范围但未达到目标 (1.0)。"
+                f"这反映了当前市场环境下的合理风险收益权衡。"
+            )
+
+        # 添加优化器策略说明
+        strategy_note = (
+            "优化策略：使用长期历史先验（如 SPY 10%、QQQ 12%）进行收缩估计，"
+            f"当前收缩强度为 {shrinkage_intensity:.0%}，以避免近期数据导致的极端估计。"
+        )
+
+        return {
+            "summary": summary,
+            "strategy_note": strategy_note,
+            "factors": factors,
+            "sharpe_target": 1.0,
+            "current_sharpe": round(sharpe, 2)
+        }
 
     def _risk_parity_objective(
         self, weights: np.ndarray, cov_matrix: pd.DataFrame
