@@ -563,7 +563,7 @@ async def get_master_perspectives():
 
         # 获取市场数据
         prices = await market_fetcher.get_current_prices()
-        macro = await macro_fetcher.get_macro_indicators()
+        macro = await macro_fetcher.get_market_regime()
 
         # 简化市场数据用于分析
         market_summary = {

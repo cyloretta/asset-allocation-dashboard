@@ -1,6 +1,6 @@
 # 资产配置看板 - 开发进度
 
-**最后更新**: 2026-04-06
+**最后更新**: 2026-04-10
 
 ## 项目概述
 AI 驱动的动态资产配置策略看板，基于宏观分析自动生成投资组合建议。
@@ -11,11 +11,49 @@ AI 驱动的动态资产配置策略看板，基于宏观分析自动生成投�
 - **前端**: React 18 + TypeScript + Vite + Tailwind CSS + Recharts + SWR
 - **外网访问**: Cloudflare Tunnel (`https://dashboard.cgfund.cloud`)
 
-## 当前状态: 外网访问已配置 ✅ 生产模式部署 ✅
+## 当前状态: 外网访问已配置 ✅ 生产模式部署 ✅ 大师视角 ✅
 
 ---
 
-## 最新更新 (2026-04-03)
+## 最新更新 (2026-04-10)
+
+### 大师视角功能 ✅
+
+新增「大师视角」模块，用塔勒布和芒格的思维框架审视当前资产配置：
+
+#### 核心功能
+- **塔勒布视角**：运用反脆弱、尾部风险、杠铃策略、遍历性检验、Skin in the Game 等核心概念
+- **芒格视角**：运用逆向思考、Lollapalooza效应、能力圈、激励机制分析、三筐分类法
+- **大师共识**：汇总两位大师的共识与分歧，给出综合建议
+
+#### 实现细节
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| 后端 API | `backend/main.py:551` | `POST /api/analysis/master-perspectives` |
+| AI 分析器 | `backend/analysis/ai_analyst.py` | `analyze_master_perspectives()` 方法 |
+| 前端组件 | `frontend/src/components/MasterPerspectives.tsx` | 完整 UI 组件 |
+| API Hook | `frontend/src/hooks/useApi.ts:529` | `useMasterPerspectives()` |
+| Dashboard 集成 | `frontend/src/components/Dashboard.tsx:415` | Row 5: 大师视角区块 |
+
+#### AI Prompt 增强
+- 注入塔勒布核心心智模型：非对称风险思维、反脆弱偏好、遍历性检验、火鸡问题、杠铃策略
+- 注入芒格核心心智模型：逆向思考、Lollapalooza效应、能力圈纪律、激励机制、三筐分类
+- 完整的表达风格指南：塔勒布格言体、芒格极短句否定句
+
+#### UI 设计
+- **塔勒布面板**：红色系 (#ff6b6b)，显示风险评分、尾部风险关注点、杠铃策略建议
+- **芒格面板**：黄色系 (#ffd93d)，显示信心评分、认知偏误、逆向思考
+- **共识面板**：青色渐变背景，展示共同观点、观点分歧、综合建议
+
+#### 思维框架文档
+完整的大师思维框架存储在：
+- `.agents/skills/taleb-perspective/SKILL.md` (443行)
+- `.agents/skills/munger-perspective/SKILL.md` (419行)
+
+---
+
+## 更新 (2026-04-03)
 
 ### 1. 多数据源架构 ✅
 新增 `data/data_providers.py` - 实现数据源抽象和自动故障转移:

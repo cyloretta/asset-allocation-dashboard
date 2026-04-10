@@ -380,55 +380,88 @@ class AIAnalyst:
 
         return allocation
 
-    async def analyze_master_perspectives(
-        self,
-        allocation: Dict[str, float],
-        market_data: Dict,
-        macro_data: Dict
-    ) -> Dict:
-        """
-        使用塔勒布和芒格的思维框架分析当前资产配置
-        """
-        if not self.client:
-            return self._get_mock_master_perspectives(allocation)
-
-        prompt = f"""你需要扮演两位投资大师，对以下资产配置方案进行分析和点评。
+    # 大师视角分析的详细 prompt 模板
+    MASTER_PERSPECTIVES_PROMPT = """你需要扮演两位投资大师，对以下资产配置方案进行深度分析和点评。
 
 ## 当前资产配置
-{json.dumps(allocation, indent=2, ensure_ascii=False)}
+{allocation}
 
 ## 市场数据
-{json.dumps(market_data, indent=2, ensure_ascii=False)}
+{market_data}
 
 ## 宏观环境
-{json.dumps(macro_data, indent=2, ensure_ascii=False)}
+{macro_data}
 
-请分别以塔勒布(Nassim Taleb)和芒格(Charlie Munger)的视角进行分析：
+---
 
-### 塔勒布视角要求：
-- 用塔勒布的思维框架：反脆弱性、尾部风险、杠铃策略、skin in the game
-- 关注：这个配置有没有隐藏的尾部风险？是否具有反脆弱性？有没有遍历性问题？
-- 风格：格言体、直接、有攻击性、用古典类比
+# 塔勒布视角分析
 
-### 芒格视角要求：
-- 用芒格的思维框架：逆向思考、认知偏误、能力圈、Lollapalooza效应
-- 关注：这个配置有什么认知偏误？怎样会亏钱？激励结构是否合理？
-- 风格：极短句、否定句优先、干燥幽默、直接给结论
+## 塔勒布核心思维框架（必须运用）：
 
-请以JSON格式返回：
+1. **非对称风险思维**：永远先看下行风险的代价。在Extremistan里，一个极端事件可以主宰一切。不问「最可能发生什么」，问「最坏能坏到什么程度，我能承受吗」。
+
+2. **反脆弱偏好**：三个层级——脆弱（被波动伤害）→ 鲁棒（不受影响）→ 反脆弱（从波动中获益）。评估这个配置：波动性增加时会变好还是变差？
+
+3. **Skin in the Game检验**：谁在承担风险？如果配置者的利益和组合不对齐，观点打五折。
+
+4. **杠铃策略**：90%极度保守 + 10%极度冒险。中间地带是最危险的位置——看似安全，实则在积累隐性尾部风险。
+
+5. **遍历性检验**：100人去赌场和1人去赌场100次完全不同。问：这个策略重复一万次，会在某一次彻底出局吗？
+
+6. **火鸡问题**：过去的稳定不能预测未来。火鸡在感恩节前每天都很快乐。
+
+## 塔勒布表达风格：
+- 格言体为主，一句话一个段落，不解释
+- 先砸结论，不铺垫
+- 确定性极高，很少说「我不确定」
+- 用古典引用（汉谟拉比法典、Seneca）
+- 攻击性是feature不是bug
+- 用「OK?」结尾表示居高临下的教师口吻
+- 自创术语：IYI、Fragilista、Mediocristan/Extremistan
+
+---
+
+# 芒格视角分析
+
+## 芒格核心思维框架（必须运用）：
+
+1. **逆向思考**：不问「这个配置的好处是什么」，先问「这个配置怎么会让我亏光」。避开所有灾难路径。"All I want to know is where I'm going to die, so I'll never go there."
+
+2. **Lollapalooza效应**：多种心理偏误同时发力、相互强化，产生极端非线性结果。检测：社会认同（别人都在买）+ 过度乐观（只涨不跌）+ 被剥夺超级反应（FOMO）= 危险。
+
+3. **能力圈纪律**：知道自己不知道什么。"I never allow myself to have an opinion on anything that I don't know the other side's argument better than they do."
+
+4. **激励机制决定一切**：不要听他说什么，看他被什么奖励。"Show me the incentive and I'll show you the outcome."
+
+5. **三筐分类法**：Yes（确信）、No（确信不做）、Too Hard（太复杂，放弃）。大部分事情属于第三筐。
+
+6. **葡萄干与粪便法则**：如果其中有一个致命缺陷，整体就是有毒的。"If you mix raisins with turds, they're still turds."
+
+## 芒格表达风格：
+- 极短句优先，一个判断用一句话
+- 否定句 > 肯定句
+- 不铺垫，先给结论
+- 极端词不回避：stupid、evil、insanity
+- 干燥幽默（dry humor）：用严肃语气说荒诞内容
+- 经典回应："I have nothing to add." / "It's outside my circle of competence."
+- 向下类比：粪便、老鼠药、看牙医
+
+---
+
+请以JSON格式返回分析结果：
 {{
     "taleb": {{
         "verdict": "反脆弱/脆弱/中性",
         "risk_score": 0-100,
-        "key_concerns": ["关注点1", "关注点2", "关注点3"],
-        "analysis": "详细分析（200-300字，用塔勒布的语气）",
-        "barbell_suggestion": "杠铃策略建议（如有）"
+        "key_concerns": ["尾部风险关注点1", "关注点2", "关注点3"],
+        "analysis": "详细分析（200-300字，用塔勒布的语气和思维框架）",
+        "barbell_suggestion": "杠铃策略建议"
     }},
     "munger": {{
         "verdict": "明智/愚蠢/需要更多思考",
         "confidence": 0-100,
-        "cognitive_biases": ["可能存在的偏误1", "偏误2"],
-        "analysis": "详细分析（200-300字，用芒格的语气）",
+        "cognitive_biases": ["可能存在的认知偏误1", "偏误2"],
+        "analysis": "详细分析（200-300字，用芒格的语气和逆向思考）",
         "inversion": "逆向思考：怎样会让这个配置失败？"
     }},
     "consensus": {{
@@ -438,6 +471,24 @@ class AIAnalyst:
     }}
 }}
 """
+
+    async def analyze_master_perspectives(
+        self,
+        allocation: Dict[str, float],
+        market_data: Dict,
+        macro_data: Dict
+    ) -> Dict:
+        """
+        使用塔勒布和芒格的完整思维框架分析当前资产配置
+        """
+        if not self.client:
+            return self._get_mock_master_perspectives(allocation)
+
+        prompt = self.MASTER_PERSPECTIVES_PROMPT.format(
+            allocation=json.dumps(allocation, indent=2, ensure_ascii=False),
+            market_data=json.dumps(market_data, indent=2, ensure_ascii=False),
+            macro_data=json.dumps(macro_data, indent=2, ensure_ascii=False)
+        )
 
         try:
             if self.provider == "deepseek":
