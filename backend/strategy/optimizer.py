@@ -96,12 +96,22 @@ class PortfolioOptimizer:
             'by_asset': by_asset
         }
 
+    # 资产类别的长期历史平均年化收益（用于收缩估计）
+    LONG_TERM_PRIORS = {
+        'SPY': 0.10,      # 美股大盘长期平均 ~10%
+        'QQQ': 0.12,      # 科技股长期平均 ~12%
+        'GLD': 0.07,      # 黄金长期平均 ~7%
+        'BTC-USD': 0.20,  # 比特币长期平均（保守估计）~20%
+        'TLT': 0.05,      # 长期国债长期平均 ~5%
+        'CASH': 0.035,    # 现金约等于无风险利率
+    }
+
     def estimate_expected_returns(
         self,
         returns: pd.DataFrame,
         cov_matrix: pd.DataFrame,
         method: str = "shrinkage",
-        shrinkage_target: str = "equilibrium",
+        shrinkage_target: str = "long_term_prior",
         shrinkage_intensity: float = 0.5,
         ai_adjustments: Optional[Dict] = None
     ) -> pd.Series:
@@ -112,7 +122,7 @@ class PortfolioOptimizer:
             returns: 日收益率 DataFrame
             cov_matrix: 年化协方差矩阵
             method: "simple" | "shrinkage"
-            shrinkage_target: "equilibrium" | "equal" | "zero"
+            shrinkage_target: "long_term_prior" | "equilibrium" | "equal" | "zero"
             shrinkage_intensity: 收缩强度 (0-1)，越大越接近目标
             ai_adjustments: AI建议的调整 {asset: float} 或 {asset: str}
                            正值表示看好（提高预期收益），负值表示看空
@@ -127,7 +137,14 @@ class PortfolioOptimizer:
             base_returns = historical_mean
         else:
             # 计算收缩目标
-            if shrinkage_target == "equilibrium":
+            if shrinkage_target == "long_term_prior":
+                # 使用资产类别的长期历史平均收益作为先验
+                # 这比短期历史均值更稳定，避免近期熊市导致的过度悲观估计
+                target = pd.Series(
+                    [self.LONG_TERM_PRIORS.get(asset, 0.05) for asset in returns.columns],
+                    index=returns.columns
+                )
+            elif shrinkage_target == "equilibrium":
                 # 市场均衡收益 (反推自 CAPM)
                 # 假设市场组合为等权，风险厌恶系数 = 2.5
                 risk_aversion = 2.5
@@ -312,19 +329,23 @@ class PortfolioOptimizer:
         method: str = "max_sharpe",
         max_drawdown: Optional[float] = None,
         target_sharpe: Optional[float] = None,
-        train_ratio: float = 0.8,  # P0: 数据分离比例
+        horizon_months: int = 6,  # 优化周期：3-6个月
+        lookback_days: int = 252,  # 回看窗口：默认1年
         apply_correlation_adjustment: bool = True,  # P2: 相关性动态调整
         macro_risk_score: Optional[float] = None,  # 统一风险框架
         ai_risk_score: Optional[float] = None  # AI风险评分
     ) -> Dict:
         """
-        Optimize portfolio allocation
+        Optimize portfolio allocation for 3-6 month horizon
+
+        核心优化目标：最大化未来3-6个月的风险调整收益（夏普比率）
 
         Args:
             returns: DataFrame of historical returns
             ai_adjustments: Dict of asset -> adjustment (float like 0.05 or str like "increase")
             method: "max_sharpe", "min_volatility", "risk_parity", "composite", "risk_aware"
-            train_ratio: Ratio of data used for optimization (rest for validation)
+            horizon_months: 优化周期（月），默认6个月
+            lookback_days: 用于估计的历史数据天数，默认252天（1年）
             macro_risk_score: 宏观风险评分 (0-100)
             ai_risk_score: AI分析风险评分 (0-100)
 
@@ -350,34 +371,82 @@ class PortfolioOptimizer:
                 "error": f"Insufficient data: {len(returns_full)} days, minimum {min_data_points} required"
             }
 
-        # 验证 train_ratio 参数
-        if train_ratio <= 0 or train_ratio >= 1:
-            train_ratio = 0.8
+        # ============================================
+        # 数据窗口选择：使用最近 lookback_days 天的数据
+        # 对于预测未来3-6个月，使用近期数据比全部历史更有效
+        # ============================================
+        if len(returns_full) > lookback_days:
+            returns_recent = returns_full.iloc[-lookback_days:]
+            logger.info(f"Using recent {lookback_days} days for optimization (total available: {len(returns_full)})")
+        else:
+            returns_recent = returns_full
+            logger.info(f"Using all {len(returns_full)} days for optimization")
 
-        # P0: 数据分离 - 用前 train_ratio 数据优化，后面数据验证
-        split_idx = int(len(returns_full) * train_ratio)
-        # 确保训练集至少有 min_train_days 天
-        min_train_days = 40
+        # 数据分离：80% 训练，20% 验证
+        split_idx = int(len(returns_recent) * 0.8)
+        min_train_days = 60
         if split_idx < min_train_days:
-            split_idx = min(min_train_days, len(returns_full) - 10)
+            split_idx = min(min_train_days, len(returns_recent) - 20)
 
-        returns_train = returns_full.iloc[:split_idx]
-        returns_test = returns_full.iloc[split_idx:] if split_idx < len(returns_full) else None
+        returns_train = returns_recent.iloc[:split_idx]
+        returns_test = returns_recent.iloc[split_idx:] if split_idx < len(returns_recent) else None
 
-        # P0优化: 使用 Ledoit-Wolf 收缩估计协方差矩阵
+        # ============================================
+        # 协方差矩阵估计：使用 Ledoit-Wolf 收缩
+        # ============================================
         cov_matrix = self.estimate_covariance(returns_train, method="ledoit_wolf")
 
-        # P1优化: 使用收缩估计预期收益（降低估算误差）
-        # 整合 AI 调整：将 AI 建议作为预期收益的先验调整
-        # 这确保 AI 建议在优化过程中被考虑，CVaR 约束仍然有效
+        # ============================================
+        # 预期收益估计：使用长期先验收缩
+        #
+        # 关键改进：
+        # 1. 使用 long_term_prior 作为收缩目标，避免近期熊市导致的过度悲观
+        # 2. 收缩强度根据近期市场表现动态调整：
+        #    - 近期收益很负 -> 增加收缩强度（更依赖长期先验）
+        #    - 近期收益正常 -> 标准收缩强度
+        # ============================================
+        historical_mean = returns_train.mean() * 252
+
+        # 动态计算收缩强度：近期表现越差，越依赖长期先验
+        # 原理：熊市期间历史数据的预测价值较低，应更依赖长期均值回归
+        avg_historical_return = historical_mean.mean()
+        if avg_historical_return < -0.20:  # 极端熊市 < -20%
+            shrinkage_intensity = 0.90  # 90% 长期先验 - 几乎完全忽略近期数据
+            logger.info(f"Extreme shrinkage (0.90) due to severe bear market: {avg_historical_return:.2%}")
+        elif avg_historical_return < -0.10:  # 熊市 < -10%
+            shrinkage_intensity = 0.80  # 80% 长期先验
+            logger.info(f"High shrinkage (0.80) due to bear market: {avg_historical_return:.2%}")
+        elif avg_historical_return < 0:  # 近期年化收益 < 0%
+            shrinkage_intensity = 0.65  # 65% 长期先验
+            logger.info(f"Moderate shrinkage (0.65) due to low historical returns: {avg_historical_return:.2%}")
+        else:  # 近期收益正常
+            shrinkage_intensity = 0.50  # 50% 长期先验
+            logger.info(f"Standard shrinkage (0.50), historical returns: {avg_historical_return:.2%}")
+
         mean_returns = self.estimate_expected_returns(
             returns_train,
             cov_matrix,
             method="shrinkage",
-            shrinkage_target="equilibrium",
-            shrinkage_intensity=0.4,  # 40% 收缩到均衡收益
-            ai_adjustments=ai_adjustments  # 整合 AI 调整
+            shrinkage_target="long_term_prior",  # 使用长期历史先验
+            shrinkage_intensity=shrinkage_intensity,
+            ai_adjustments=ai_adjustments
         )
+
+        # ============================================
+        # 预期收益合理性检查
+        # 确保预期收益不会过于极端
+        # ============================================
+        for asset in mean_returns.index:
+            # 下限：不低于 -5%（避免过度悲观）
+            if mean_returns[asset] < -0.05:
+                logger.warning(f"Capping {asset} expected return from {mean_returns[asset]:.2%} to -5%")
+                mean_returns[asset] = -0.05
+            # 上限：不高于 40%（避免过度乐观）
+            if mean_returns[asset] > 0.40:
+                logger.warning(f"Capping {asset} expected return from {mean_returns[asset]:.2%} to 40%")
+                mean_returns[asset] = 0.40
+
+        logger.info(f"Final expected returns: {dict(zip(mean_returns.index, [f'{r:.2%}' for r in mean_returns.values]))}")
 
         # P2: 检测相关性状态
         correlation_regime = None
@@ -517,6 +586,34 @@ class PortfolioOptimizer:
                 "days": len(returns_test)
             }
 
+        # ============================================
+        # 优化结果验证和日志
+        # ============================================
+        logger.info(f"=== Optimization Result ===")
+        logger.info(f"Method: {method}")
+        logger.info(f"Allocation: {allocation}")
+        logger.info(f"Expected Return: {portfolio_return:.2%}")
+        logger.info(f"Expected Volatility: {portfolio_vol:.2%}")
+        logger.info(f"Sharpe Ratio: {sharpe:.4f}")
+        logger.info(f"Risk-free Rate: {self.risk_free_rate:.2%}")
+
+        # 夏普比率合理性检查
+        if sharpe < 0:
+            logger.warning(f"Negative Sharpe ratio ({sharpe:.4f}). Expected return ({portfolio_return:.2%}) < Risk-free rate ({self.risk_free_rate:.2%})")
+        elif sharpe > 3:
+            logger.warning(f"Unusually high Sharpe ratio ({sharpe:.4f}). May indicate estimation error.")
+
+        # 计算3-6个月周期的预期收益
+        horizon_days = horizon_months * 21  # 约21个交易日/月
+        horizon_return = portfolio_return * (horizon_months / 12)
+        horizon_vol = portfolio_vol * np.sqrt(horizon_months / 12)
+        horizon_sharpe = (horizon_return - self.risk_free_rate * (horizon_months / 12)) / horizon_vol if horizon_vol > 0 else 0
+
+        logger.info(f"=== {horizon_months}-Month Horizon ===")
+        logger.info(f"Expected Return: {horizon_return:.2%}")
+        logger.info(f"Expected Volatility: {horizon_vol:.2%}")
+        logger.info(f"Horizon Sharpe: {horizon_sharpe:.4f}")
+
         return {
             "allocation": allocation,
             "metrics": {
@@ -531,6 +628,17 @@ class PortfolioOptimizer:
                 "mc_mdd_expected": round(mc_mdd_result['expected_mdd'], 4),  # MC平均回撤
                 "mc_mdd_95": round(mc_mdd_result['mdd_at_confidence'], 4),  # MC 95%置信度回撤
             },
+            # 3-6个月周期的预期指标
+            "horizon_metrics": {
+                "horizon_months": horizon_months,
+                "expected_return": round(float(horizon_return), 4),
+                "expected_volatility": round(float(horizon_vol), 4),
+                "sharpe_ratio": round(float(horizon_sharpe), 4),
+            },
+            "expected_returns_by_asset": {
+                asset: round(float(mean_returns[asset]), 4)
+                for asset in mean_returns.index
+            },
             "out_of_sample": out_of_sample_metrics,  # P0: 样本外验证结果
             "correlation_regime": correlation_regime,  # P2: 相关性状态
             "risk_context": risk_context,  # 统一风险上下文
@@ -538,6 +646,8 @@ class PortfolioOptimizer:
             "optimization_success": bool(result.success) if hasattr(result, "success") else True,
             "train_days": len(returns_train),
             "test_days": len(returns_test) if returns_test is not None else 0,
+            "lookback_days": len(returns_recent),
+            "shrinkage_intensity": shrinkage_intensity,
             "covariance_method": "ledoit_wolf" if HAS_SKLEARN else "simple",
             "ai_adjustments_integrated": bool(ai_adjustments)  # 标识 AI 调整是否已整合到优化
         }

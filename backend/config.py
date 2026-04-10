@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Optimization constraints
     max_drawdown: float = 0.25
     target_sharpe: float = 1.0
-    risk_free_rate: float = 0.05
+    risk_free_rate: float = 0.035  # 3.5% - 基于当前短期国债利率
 
     # Scheduler
     daily_update_hour: int = 6

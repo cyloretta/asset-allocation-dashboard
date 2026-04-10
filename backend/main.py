@@ -705,6 +705,7 @@ async def optimize_portfolio(request: AllocationRequest):
                     ai_risk_score = cached_analysis.overall_risk_score
 
         # Optimize with unified risk context
+        # 使用6个月投资周期，252天回看期（约1年历史数据）
         result = optimizer.optimize(
             returns,
             ai_adjustments=ai_adjustments,
@@ -712,7 +713,9 @@ async def optimize_portfolio(request: AllocationRequest):
             max_drawdown=request.max_drawdown,
             target_sharpe=request.target_sharpe,
             macro_risk_score=macro_risk_score,
-            ai_risk_score=ai_risk_score
+            ai_risk_score=ai_risk_score,
+            horizon_months=6,
+            lookback_days=252
         )
 
         # 检查优化是否成功
