@@ -11,7 +11,7 @@ AI 驱动的动态资产配置策略看板，基于宏观分析自动生成投�
 - **前端**: React 18 + TypeScript + Vite + Tailwind CSS + Recharts + SWR
 - **外网访问**: Cloudflare Tunnel (`https://dashboard.cgfund.cloud`)
 
-## 当前状态: 外网访问已配置 ✅ 生产模式部署 ✅ 大师视角 ✅
+## 当前状态: 策略优化重构 ✅ AI分析24小时有效 ✅ 夏普解释 ✅
 
 ---
 
@@ -344,14 +344,162 @@ cd ../frontend && npm run dev
 
 ### 待完成功能
 1. ~~**外网访问**~~ ✅ 已完成 - `https://dashboard.cgfund.cloud`
-2. **用户自定义资产池** - 允许用户添加/删除资产
-3. **隧道开机自启** - 配置 launchd 让 cloudflared 开机自动运行
+2. ~~**策略优化逻辑**~~ ✅ 已重构 - 长期先验 + 动态收缩
+3. ~~**AI分析有效期**~~ ✅ 已改为24小时
+4. **用户自定义资产池** - 允许用户添加/删除资产
+5. **隧道开机自启** - 配置 launchd 让 cloudflared 开机自动运行
 
 ---
 
-## Claude 工作备忘 (2026-04-06 续2) ⭐ 最新
+## Claude 工作备忘 (2026-04-10) ⭐ 最新
 
-### 调试中：策略优化不显示结果
+### 本次完成：策略优化逻辑重构 + AI分析24小时有效期
+
+#### 1. 策略优化逻辑修复 ✅
+
+**问题**: 夏普比率为负值 (-0.15)，不合理
+
+**根本原因**:
+- 风险无风险利率设置过高 (5% vs 实际3.5%)
+- 熊市期间历史数据导致过度悲观的预期收益估计
+- 收缩估计使用 "equilibrium" 而非长期先验
+
+**解决方案**:
+
+| 修改项 | 之前 | 之后 |
+|--------|------|------|
+| 无风险利率 | 5.0% | 3.5% (匹配实际国债利率) |
+| 收缩目标 | equilibrium | long_term_prior |
+| 收缩强度 | 固定 40% | 动态 50-90% |
+| 夏普比率 | -0.15 | +0.29 |
+
+**长期先验收益率** (`backend/strategy/optimizer.py`):
+```python
+LONG_TERM_PRIORS = {
+    'SPY': 0.10,      # 美股大盘 ~10%
+    'QQQ': 0.12,      # 科技股 ~12%
+    'GLD': 0.07,      # 黄金 ~7%
+    'BTC-USD': 0.20,  # 比特币 ~20%
+    'TLT': 0.05,      # 长期国债 ~5%
+    'CASH': 0.035,    # 现金 ~3.5%
+}
+```
+
+**动态收缩强度**:
+- 极端熊市 (< -20%): 90% 长期先验
+- 熊市 (< -10%): 80% 长期先验
+- 低迷 (< 0%): 65% 长期先验
+- 正常: 50% 长期先验
+
+**新增参数**: `horizon_months=6`, `lookback_days=252`
+
+#### 2. 夏普比率解释功能 ✅
+
+当夏普比率 < 1.0 时，返回结构化解释：
+
+```json
+{
+  "sharpe_explanation": {
+    "summary": "夏普比率较低 (0.29)，受市场环境和风险约束影响...",
+    "strategy_note": "优化策略：使用长期历史先验，收缩强度90%...",
+    "factors": [
+      {"factor": "极端熊市环境", "impact": "高", "detail": "..."},
+      {"factor": "超额收益有限", "impact": "中", "detail": "..."},
+      {"factor": "高现金配置", "impact": "中", "detail": "..."}
+    ],
+    "sharpe_target": 1.0,
+    "current_sharpe": 0.29
+  }
+}
+```
+
+#### 3. AI分析24小时有效期 ✅
+
+**修改内容**:
+- `max_age_minutes`: 60 → 1440 (24小时)
+- 新增字段: `age_hours`, `valid_hours_remaining`
+- 状态消息显示小时单位
+
+**影响文件**:
+| 文件 | 修改 |
+|------|------|
+| `backend/main.py` | max_age_minutes 改为 1440 |
+| `backend/database/crud.py` | get_ai_analysis_status 默认24小时 |
+| `frontend/src/types/index.ts` | 添加缓存状态字段 |
+| `frontend/src/components/AIAnalysisPanel.tsx` | 显示小时和剩余有效时间 |
+
+**前端显示**:
+- 有效时: "有效期剩余 XX.X 小时"
+- 过期时: "已过期 (超过24小时) - 需重新运行"
+
+---
+
+### 关键文件修改清单
+
+| 文件 | 修改内容 |
+|------|---------|
+| `backend/config.py:29` | risk_free_rate: 0.05 → 0.035 |
+| `backend/strategy/optimizer.py:100-115` | 添加 LONG_TERM_PRIORS |
+| `backend/strategy/optimizer.py:410-430` | 动态收缩强度逻辑 |
+| `backend/strategy/optimizer.py:688-790` | _generate_sharpe_explanation 方法 |
+| `backend/main.py:708-720` | 添加 horizon_months, lookback_days 参数 |
+| `backend/main.py:468-479` | AI分析24小时有效期 |
+| `backend/database/crud.py:177-220` | 状态函数增强 |
+
+---
+
+### 测试命令
+
+```bash
+# 启动后端
+cd ~/asset-allocation-dashboard/backend
+source venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
+
+# 测试策略优化
+curl -s -b "dashboard_auth=f747bdea14a56eb5d819343f5bde1ecb" \
+  -X POST "http://localhost:8000/api/strategy/optimize" \
+  -H "Content-Type: application/json" \
+  -d '{"use_ai_adjustments": false}' | python3 -m json.tool
+
+# 测试AI分析状态
+curl -s -b "dashboard_auth=f747bdea14a56eb5d819343f5bde1ecb" \
+  "http://localhost:8000/api/analysis/status" | python3 -m json.tool
+
+# 测试AI分析数据
+curl -s -b "dashboard_auth=f747bdea14a56eb5d819343f5bde1ecb" \
+  "http://localhost:8000/api/analysis/latest" | python3 -m json.tool
+```
+
+---
+
+### 当前优化结果示例
+
+```json
+{
+  "allocation": {"SPY": 0.39, "BTC-USD": 0.09, "CASH": 0.52},
+  "metrics": {
+    "expected_return": 0.055,
+    "sharpe_ratio": 0.29
+  },
+  "expected_returns_by_asset": {
+    "SPY": 0.0714, "QQQ": 0.081, "GLD": 0.0501,
+    "BTC-USD": 0.1199, "TLT": 0.0357, "CASH": 0.0315
+  }
+}
+```
+
+---
+
+### 下次继续开发
+
+1. **运行 AI 分析**: 当前缓存已过期 (98小时前)，需要重新运行
+2. **测试完整流程**: AI分析 → 策略优化 → 查看夏普解释
+3. **前端测试**: 确认 AIAnalysisPanel 正确显示剩余有效时间
+
+---
+
+## Claude 工作备忘 (2026-04-06 续2)
 
 #### 问题表现
 用户报告点击"策略优化"后不显示结果
