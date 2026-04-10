@@ -466,12 +466,15 @@ async def get_latest_ai_analysis():
             # 计算分析时间距今多久
             from datetime import datetime
             age_minutes = (datetime.utcnow() - cached.created_at).total_seconds() / 60
+            age_hours = age_minutes / 60
             return {
                 "data": {
                     **cached.raw_response,  # 包含完整的 AI 分析结果
                     "cached_at": cached.created_at.isoformat(),
                     "age_minutes": round(age_minutes, 1),
-                    "is_valid_for_optimize": age_minutes <= 60  # 是否在 60 分钟有效期内
+                    "age_hours": round(age_hours, 1),
+                    "is_valid_for_optimize": age_minutes <= 1440,  # 是否在 24 小时有效期内
+                    "valid_hours_remaining": max(0, round(24 - age_hours, 1))  # 剩余有效时间（小时）
                 }
             }
         return {"data": None, "message": "No analysis available. Please run AI analysis first."}
@@ -479,10 +482,10 @@ async def get_latest_ai_analysis():
 
 @app.get("/api/analysis/status")
 async def get_analysis_status():
-    """获取 AI 分析缓存状态（用于策略优化前检查）"""
+    """获取 AI 分析缓存状态（用于策略优化前检查）- 24小时有效期"""
     try:
         async with async_session() as session:
-            status = await get_ai_analysis_status(session, max_age_minutes=60)
+            status = await get_ai_analysis_status(session, max_age_minutes=1440)  # 24小时
         return {"data": status}
     except Exception as e:
         logger.error(f"Error getting analysis status: {e}")
@@ -686,14 +689,14 @@ async def optimize_portfolio(request: AllocationRequest):
         ai_adjustments = None
         if request.use_ai_adjustments:
             async with async_session() as session:
-                # 检查是否有 60 分钟内的 AI 分析缓存
-                cached_analysis = await get_latest_ai_analysis_cache(session, max_age_minutes=60)
+                # 检查是否有 24 小时内的 AI 分析缓存
+                cached_analysis = await get_latest_ai_analysis_cache(session, max_age_minutes=1440)  # 24小时
 
                 if not cached_analysis:
                     # 无有效缓存，提示用户先运行 AI 分析
                     raise HTTPException(
                         status_code=400,
-                        detail="请先运行 AI 分析。AI 分析结果需要在 60 分钟内才能用于策略优化。"
+                        detail="请先运行 AI 分析。AI 分析结果需要在 24 小时内才能用于策略优化。"
                     )
 
                 # 使用缓存的 AI 分析结果

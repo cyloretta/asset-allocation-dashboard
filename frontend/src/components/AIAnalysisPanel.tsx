@@ -197,12 +197,19 @@ const AIAnalysisPanel = memo(function AIAnalysisPanel({ externalData }: Props) {
             {new Date(analysis.cached_at).toLocaleString('zh-CN')}
             {analysis.age_minutes != null ? (
               <span className="ml-2 text-gray-500">
-                ({analysis.age_minutes < 1 ? '刚刚' : `${Math.round(analysis.age_minutes)}分钟前`})
+                ({analysis.age_minutes < 60
+                  ? (analysis.age_minutes < 1 ? '刚刚' : `${Math.round(analysis.age_minutes)}分钟前`)
+                  : `${(analysis.age_minutes / 60).toFixed(1)}小时前`})
               </span>
             ) : null}
           </span>
+          {analysis.is_valid_for_optimize && analysis.valid_hours_remaining != null ? (
+            <span className="ml-auto text-[10px] tracking-wider text-neon-green/70">
+              有效期剩余 {analysis.valid_hours_remaining.toFixed(1)} 小时
+            </span>
+          ) : null}
           {!analysis.is_valid_for_optimize ? (
-            <span className="ml-auto text-[10px] tracking-wider">已过期 - 需重新运行</span>
+            <span className="ml-auto text-[10px] tracking-wider">已过期 (超过24小时) - 需重新运行</span>
           ) : null}
         </div>
       ) : null}

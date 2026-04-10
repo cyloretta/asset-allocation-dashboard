@@ -37,8 +37,10 @@ export interface AIAnalysisStatus {
   has_valid_cache: boolean;
   last_analysis_time: string | null;
   age_minutes: number | null;
+  age_hours?: number | null;
   is_expired: boolean;
   max_age_minutes?: number;
+  valid_hours_remaining?: number | null;  // 剩余有效时间（小时）
   message: string;
 }
 

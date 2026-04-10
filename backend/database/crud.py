@@ -174,8 +174,8 @@ async def get_latest_ai_analysis_cache(
     return result.scalar_one_or_none()
 
 
-async def get_ai_analysis_status(session: AsyncSession, max_age_minutes: int = 60) -> dict:
-    """获取 AI 分析状态（是否有有效缓存）"""
+async def get_ai_analysis_status(session: AsyncSession, max_age_minutes: int = 1440) -> dict:
+    """获取 AI 分析状态（是否有有效缓存）- 默认24小时有效期"""
     # 获取最新的缓存记录（不限时间）
     result = await session.execute(
         select(AIAnalysisCache)
@@ -189,22 +189,39 @@ async def get_ai_analysis_status(session: AsyncSession, max_age_minutes: int = 6
             "has_valid_cache": False,
             "last_analysis_time": None,
             "age_minutes": None,
+            "age_hours": None,
             "is_expired": True,
+            "valid_hours_remaining": 0,
             "message": "尚未运行 AI 分析"
         }
 
     # 使用 UTC 时间保持一致性（数据库存储的是 UTC）
     age = datetime.utcnow() - latest.created_at
     age_minutes = age.total_seconds() / 60
+    age_hours = age_minutes / 60
     is_expired = age_minutes > max_age_minutes
+    valid_hours_remaining = max(0, (max_age_minutes - age_minutes) / 60)
+
+    # 格式化时间显示
+    if age_hours < 1:
+        age_display = f"{round(age_minutes)}分钟前"
+    else:
+        age_display = f"{age_hours:.1f}小时前"
+
+    if is_expired:
+        message = f"AI 分析已过期（{age_display}，超过24小时）"
+    else:
+        message = f"AI 分析有效（剩余 {valid_hours_remaining:.1f} 小时）"
 
     return {
         "has_valid_cache": not is_expired,
         "last_analysis_time": latest.created_at.isoformat(),
         "age_minutes": round(age_minutes, 1),
+        "age_hours": round(age_hours, 1),
         "is_expired": is_expired,
         "max_age_minutes": max_age_minutes,
-        "message": "AI 分析有效" if not is_expired else f"AI 分析已过期（{round(age_minutes)}分钟前）"
+        "valid_hours_remaining": round(valid_hours_remaining, 1),
+        "message": message
     }
 
 

@@ -49,6 +49,12 @@ export interface AIAnalysis {
   content: string;
   risk_score: number;
   key_factors?: string[][];
+  // 缓存状态字段
+  cached_at?: string;
+  age_minutes?: number;
+  age_hours?: number;
+  is_valid_for_optimize?: boolean;
+  valid_hours_remaining?: number;  // 剩余有效时间（小时）
   recommendations?: object[];
   geopolitical_risk?: {
     score: number;
