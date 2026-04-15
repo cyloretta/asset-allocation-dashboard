@@ -9,7 +9,8 @@ import logging
 from database import (
     async_session,
     create_user_config, get_user_config, get_user_config_by_name,
-    list_user_configs, update_user_config, delete_user_config
+    list_user_configs, update_user_config, delete_user_config,
+    list_custom_assets
 )
 from config import get_settings
 
@@ -97,17 +98,29 @@ async def list_configs():
 
 @router.get("/available-assets")
 async def get_available_assets():
-    """获取可用资产列表"""
-    return {
-        "data": {
-            asset: {
-                "name": info.get("name", asset),
-                "min_weight": info.get("min_weight", 0),
-                "max_weight": info.get("max_weight", 0.4)
-            }
-            for asset, info in settings.assets.items()
+    """获取可用资产列表（内置 + 自定义）"""
+    # 内置资产
+    result = {
+        asset: {
+            "name": info.get("name", asset),
+            "min_weight": info.get("min_weight", 0),
+            "max_weight": info.get("max_weight", 0.4)
         }
+        for asset, info in settings.assets.items()
     }
+
+    # 添加自定义资产
+    async with async_session() as session:
+        custom = await list_custom_assets(session)
+        for asset in custom:
+            if asset.ticker not in result:
+                result[asset.ticker] = {
+                    "name": asset.name,
+                    "min_weight": asset.min_weight,
+                    "max_weight": asset.max_weight
+                }
+
+    return {"data": result}
 
 
 @router.get("/{config_id}")

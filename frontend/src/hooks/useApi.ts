@@ -419,6 +419,98 @@ export async function deleteUserConfig(configId: number) {
 }
 
 // ============================================
+// 自定义资产 Hooks
+// ============================================
+export interface Asset {
+  ticker: string;
+  name: string;
+  asset_type: string;
+  min_weight: number;
+  max_weight: number;
+  is_builtin: boolean;
+}
+
+export interface AssetType {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export function useAllAssets() {
+  const { data, error, isLoading, mutate: refresh } = useSWR<{ data: Asset[]; builtin_count: number; custom_count: number }>(
+    '/assets/',
+    fetcher,
+    {
+      dedupingInterval: 30000,
+      revalidateOnFocus: false,
+    }
+  );
+
+  return {
+    data: data?.data ?? [],
+    builtinCount: data?.builtin_count ?? 0,
+    customCount: data?.custom_count ?? 0,
+    loading: isLoading,
+    error: error ? 'Failed to fetch assets' : null,
+    refresh
+  };
+}
+
+export function useAssetTypes() {
+  const { data, error, isLoading } = useSWR<{ data: AssetType[] }>(
+    '/assets/types',
+    fetcher,
+    {
+      dedupingInterval: 300000,  // 5分钟
+      revalidateOnFocus: false,
+    }
+  );
+
+  return {
+    data: data?.data ?? [],
+    loading: isLoading,
+    error: error ? 'Failed to fetch asset types' : null
+  };
+}
+
+export async function searchAsset(query: string) {
+  const response = await api.get(`/assets/search/${encodeURIComponent(query)}`);
+  return response.data.data;
+}
+
+export async function addCustomAsset(asset: {
+  ticker: string;
+  name: string;
+  asset_type: string;
+  min_weight?: number;
+  max_weight?: number;
+}) {
+  const response = await api.post('/assets/', asset);
+  mutate('/assets/');
+  mutate('/config/available-assets');
+  return response.data.data;
+}
+
+export async function updateCustomAsset(ticker: string, updates: {
+  name?: string;
+  asset_type?: string;
+  min_weight?: number;
+  max_weight?: number;
+}) {
+  const response = await api.put(`/assets/${ticker}`, updates);
+  mutate('/assets/');
+  mutate('/config/available-assets');
+  return response.data.data;
+}
+
+export async function deleteCustomAsset(ticker: string) {
+  const response = await api.delete(`/assets/${ticker}`);
+  mutate('/assets/');
+  mutate('/config/available-assets');
+  return response.data.data;
+}
+
+// ============================================
 // 策略快照 Hooks
 // ============================================
 export function useStrategySnapshots(days = 90) {

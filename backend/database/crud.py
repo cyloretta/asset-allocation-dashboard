@@ -6,7 +6,7 @@ from typing import Optional, List
 import json
 import asyncio
 
-from .models import Base, MarketData, MacroIndicator, AIAnalysis, StrategyRecord, NewsEvent, AIPrediction, AIAnalysisCache, UserConfig, StrategySnapshot
+from .models import Base, MarketData, MacroIndicator, AIAnalysis, StrategyRecord, NewsEvent, AIPrediction, AIAnalysisCache, UserConfig, StrategySnapshot, CustomAsset
 from config import get_settings
 
 settings = get_settings()
@@ -676,3 +676,87 @@ async def compare_snapshots(
                 "metrics": snapshot.metrics
             })
     return results
+
+
+# ============================================
+# Custom Asset CRUD
+# ============================================
+
+async def create_custom_asset(
+    session: AsyncSession,
+    ticker: str,
+    name: str,
+    asset_type: str,
+    min_weight: float = 0.0,
+    max_weight: float = 0.4
+) -> CustomAsset:
+    """创建自定义资产"""
+    async with _db_write_lock:
+        record = CustomAsset(
+            ticker=ticker.upper(),
+            name=name,
+            asset_type=asset_type,
+            min_weight=min_weight,
+            max_weight=max_weight
+        )
+        session.add(record)
+        await session.commit()
+        await session.refresh(record)
+        return record
+
+
+async def get_custom_asset(session: AsyncSession, ticker: str) -> Optional[CustomAsset]:
+    """获取单个自定义资产"""
+    result = await session.execute(
+        select(CustomAsset).where(CustomAsset.ticker == ticker.upper())
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_custom_asset_by_id(session: AsyncSession, asset_id: int) -> Optional[CustomAsset]:
+    """通过 ID 获取自定义资产"""
+    result = await session.execute(
+        select(CustomAsset).where(CustomAsset.id == asset_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_custom_assets(session: AsyncSession, active_only: bool = True) -> List[CustomAsset]:
+    """列出所有自定义资产"""
+    query = select(CustomAsset)
+    if active_only:
+        query = query.where(CustomAsset.is_active == 1)
+    query = query.order_by(CustomAsset.ticker)
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def update_custom_asset(
+    session: AsyncSession,
+    ticker: str,
+    **kwargs
+) -> Optional[CustomAsset]:
+    """更新自定义资产"""
+    async with _db_write_lock:
+        record = await get_custom_asset(session, ticker)
+        if not record:
+            return None
+
+        for key, value in kwargs.items():
+            if hasattr(record, key) and value is not None:
+                setattr(record, key, value)
+
+        await session.commit()
+        await session.refresh(record)
+        return record
+
+
+async def delete_custom_asset(session: AsyncSession, ticker: str) -> bool:
+    """软删除自定义资产"""
+    async with _db_write_lock:
+        record = await get_custom_asset(session, ticker)
+        if not record:
+            return False
+        record.is_active = 0
+        await session.commit()
+        return True

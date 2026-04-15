@@ -32,7 +32,7 @@ from database import (
     get_user_config
 )
 from data import MarketDataFetcher, MacroDataFetcher, NewsFetcher, cleanup_http_client
-from api import user_config_router
+from api import user_config_router, custom_assets_router
 from analysis import AIAnalyst, TechnicalAnalyzer
 from strategy import PortfolioOptimizer, RiskMetrics, Backtester
 from scheduler import SchedulerManager
@@ -285,6 +285,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(user_config_router)
+app.include_router(custom_assets_router)
 
 # 速率限制中间件：每分钟60请求，突发限制10请求/秒
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60, burst_limit=10)

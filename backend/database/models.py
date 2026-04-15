@@ -143,6 +143,21 @@ class UserConfig(Base):
     use_ai_adjustments = Column(Integer, default=1)
 
 
+class CustomAsset(Base):
+    """用户自定义资产"""
+    __tablename__ = "custom_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String(20), unique=True, index=True)  # 资产代码
+    name = Column(String(100))  # 资产名称
+    asset_type = Column(String(50))  # us_equity, crypto, commodity, bond, etf
+    min_weight = Column(Float, default=0.0)
+    max_weight = Column(Float, default=0.4)
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+
 class StrategySnapshot(Base):
     """策略快照：完整记录优化时的参数、市场状态和结果"""
     __tablename__ = "strategy_snapshots"

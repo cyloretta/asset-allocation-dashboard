@@ -1,4 +1,4 @@
-from .models import Base, MarketData, MacroIndicator, AIAnalysis, StrategyRecord, NewsEvent, AIPrediction, AIAnalysisCache, UserConfig, StrategySnapshot
+from .models import Base, MarketData, MacroIndicator, AIAnalysis, StrategyRecord, NewsEvent, AIPrediction, AIAnalysisCache, UserConfig, StrategySnapshot, CustomAsset
 from .crud import (
     init_db, get_db, async_session,
     save_market_data, get_market_data, get_latest_prices,
@@ -15,12 +15,15 @@ from .crud import (
     list_user_configs, update_user_config, delete_user_config,
     # 策略快照
     save_strategy_snapshot, get_strategy_snapshot, get_strategy_snapshots,
-    get_snapshot_metrics_trend, compare_snapshots
+    get_snapshot_metrics_trend, compare_snapshots,
+    # 自定义资产
+    create_custom_asset, get_custom_asset, get_custom_asset_by_id,
+    list_custom_assets, update_custom_asset, delete_custom_asset
 )
 
 __all__ = [
     "Base", "MarketData", "MacroIndicator", "AIAnalysis", "StrategyRecord", "NewsEvent",
-    "AIPrediction", "AIAnalysisCache", "UserConfig", "StrategySnapshot",
+    "AIPrediction", "AIAnalysisCache", "UserConfig", "StrategySnapshot", "CustomAsset",
     "init_db", "get_db", "async_session",
     "save_market_data", "get_market_data", "get_latest_prices",
     "save_macro_indicator", "get_macro_indicators",
@@ -32,5 +35,7 @@ __all__ = [
     "create_user_config", "get_user_config", "get_user_config_by_name",
     "list_user_configs", "update_user_config", "delete_user_config",
     "save_strategy_snapshot", "get_strategy_snapshot", "get_strategy_snapshots",
-    "get_snapshot_metrics_trend", "compare_snapshots"
+    "get_snapshot_metrics_trend", "compare_snapshots",
+    "create_custom_asset", "get_custom_asset", "get_custom_asset_by_id",
+    "list_custom_assets", "update_custom_asset", "delete_custom_asset"
 ]

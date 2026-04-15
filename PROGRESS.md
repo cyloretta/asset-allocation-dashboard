@@ -1,6 +1,6 @@
 # 资产配置看板 - 开发进度
 
-**最后更新**: 2026-04-10
+**最后更新**: 2026-04-15
 
 ## 项目概述
 AI 驱动的动态资产配置策略看板，基于宏观分析自动生成投资组合建议。
@@ -11,7 +11,7 @@ AI 驱动的动态资产配置策略看板，基于宏观分析自动生成投�
 - **前端**: React 18 + TypeScript + Vite + Tailwind CSS + Recharts + SWR
 - **外网访问**: Cloudflare Tunnel (`https://dashboard.cgfund.cloud`)
 
-## 当前状态: 夏普优化升级 ✅ 策略优化重构 ✅ AI分析24小时有效 ✅
+## 当前状态: 自定义资产池 ✅ 开机自启 ✅ 夏普优化 ✅
 
 ---
 
@@ -397,12 +397,78 @@ cd ../frontend && npm run dev
 1. ~~**外网访问**~~ ✅ 已完成 - `https://dashboard.cgfund.cloud`
 2. ~~**策略优化逻辑**~~ ✅ 已重构 - 长期先验 + 动态收缩
 3. ~~**AI分析有效期**~~ ✅ 已改为24小时
-4. **用户自定义资产池** - 允许用户添加/删除资产
-5. **隧道开机自启** - 配置 launchd 让 cloudflared 开机自动运行
+4. ~~**用户自定义资产池**~~ ✅ 已完成 - 支持添加/删除自定义资产
+5. ~~**隧道开机自启**~~ ✅ 已配置 - launchd 服务
+6. **策略回测对比** - 比较不同配置的历史表现
+7. **移动端优化** - PWA 支持、离线访问
 
 ---
 
-## Claude 工作备忘 (2026-04-10) ⭐ 最新
+## Claude 工作备忘 (2026-04-15) ⭐ 最新
+
+### 本次完成：自定义资产池 + 开机自启
+
+#### 1. 自定义资产池功能 ✅
+
+**新增功能：**
+- 用户可添加/删除自定义资产（如 NVDA, ETH-USD 等）
+- 支持资产搜索（内置常用资产数据库）
+- 自定义权重限制（min_weight, max_weight）
+- 内置资产受保护，不可删除
+
+**后端实现：**
+| 文件 | 说明 |
+|------|------|
+| `database/models.py` | 新增 `CustomAsset` 模型 |
+| `database/crud.py` | 新增 CRUD 函数 |
+| `api/custom_assets.py` | 资产管理 API |
+| `api/user_config.py` | 更新 available-assets 返回自定义资产 |
+
+**API 端点：**
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/assets/` | GET | 列出所有资产 |
+| `/api/assets/` | POST | 添加自定义资产 |
+| `/api/assets/{ticker}` | PUT | 更新自定义资产 |
+| `/api/assets/{ticker}` | DELETE | 删除自定义资产 |
+| `/api/assets/types` | GET | 获取资产类型列表 |
+| `/api/assets/search/{query}` | GET | 搜索资产 |
+
+**前端实现：**
+| 文件 | 说明 |
+|------|------|
+| `components/AssetManager.tsx` | 资产管理弹窗组件 |
+| `hooks/useApi.ts` | 新增 useAllAssets, searchAsset 等 hooks |
+| `components/Dashboard.tsx` | 添加"资产"按钮入口 |
+
+#### 2. 开机自启配置 ✅
+
+配置 macOS launchd 服务，实现后端和隧道开机自动启动。
+
+**服务文件：**
+| 文件 | 服务 |
+|------|------|
+| `~/Library/LaunchAgents/com.cgfund.dashboard.plist` | 后端服务 |
+| `~/Library/LaunchAgents/com.cgfund.tunnel.plist` | Cloudflare 隧道 |
+
+**管理命令：**
+```bash
+# 启用服务
+launchctl load ~/Library/LaunchAgents/com.cgfund.dashboard.plist
+launchctl load ~/Library/LaunchAgents/com.cgfund.tunnel.plist
+
+# 禁用服务
+launchctl unload ~/Library/LaunchAgents/com.cgfund.dashboard.plist
+launchctl unload ~/Library/LaunchAgents/com.cgfund.tunnel.plist
+
+# 查看日志
+tail -f ~/asset-allocation-dashboard/logs/backend.log
+tail -f ~/asset-allocation-dashboard/logs/tunnel.log
+```
+
+---
+
+## Claude 工作备忘 (2026-04-10)
 
 ### 本次完成：策略优化逻辑重构 + AI分析24小时有效期
 

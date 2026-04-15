@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { RefreshCw, TrendingUp, Activity, PieChart, Brain, Newspaper, Settings, Clock, Zap, Sliders, GitCompare, Users } from 'lucide-react';
+import { RefreshCw, TrendingUp, Activity, PieChart, Brain, Newspaper, Settings, Clock, Zap, Sliders, GitCompare, Users, Package } from 'lucide-react';
 import MarketOverview from './MarketOverview';
 import MacroAnalysis from './MacroAnalysis';
 import AssetAllocation from './AssetAllocation';
@@ -7,6 +7,7 @@ import StrategyPanel, { StrategyPanelRef } from './StrategyPanel';
 import AIAnalysisPanel from './AIAnalysisPanel';
 import NewsPanel from './NewsPanel';
 import ConfigPanel from './ConfigPanel';
+import AssetManager from './AssetManager';
 import StrategyComparison from './StrategyComparison';
 import StrategyHistory from './StrategyHistory';
 import MasterPerspectives from './MasterPerspectives';
@@ -101,6 +102,7 @@ export default function Dashboard() {
   const [planCData, setPlanCData] = useState<PlanCData | null>(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [showAssetManager, setShowAssetManager] = useState(false);
   const strategyPanelRef = useRef<StrategyPanelRef>(null);
 
   const hasValidAI = useMemo(() => aiStatus?.has_valid_cache ?? false, [aiStatus?.has_valid_cache]);
@@ -259,6 +261,15 @@ export default function Dashboard() {
                 >
                   <Sliders className="w-4 h-4" />
                   <span>配置</span>
+                </button>
+
+                {/* Asset manager button */}
+                <button
+                  onClick={() => setShowAssetManager(true)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-sm bg-white/5 text-gray-400 border border-white/10 hover:border-neon-green/40 hover:text-neon-green transition-all"
+                >
+                  <Package className="w-4 h-4" />
+                  <span>资产</span>
                 </button>
 
                 {/* History comparison button */}
@@ -445,6 +456,7 @@ export default function Dashboard() {
 
       {/* Modals */}
       <ConfigPanel isOpen={showConfigPanel} onClose={() => setShowConfigPanel(false)} />
+      <AssetManager isOpen={showAssetManager} onClose={() => setShowAssetManager(false)} />
       <StrategyComparison isOpen={showComparison} onClose={() => setShowComparison(false)} />
     </div>
   );
